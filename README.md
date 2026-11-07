@@ -355,9 +355,48 @@ Requires JDK 17 and Android SDK with compileSdk/targetSdk 37. Configure keys on 
 
 Single-module MVVM: Compose UI + ViewModel + Repository, Hilt, Room, OkHttp + kotlinx.serialization. Modules: `data/local` (Room), `data/remote` (DeepSeek, Ark, Doubao Speech, Seeduplex, SSE), `domain`, `di`, `ui/{chat,translate,voice,list,settings,onboarding,shell,theme}`.
 
-### GitNexus code graph
+## GitNexus code graph
 
-See the [code graph and module dependencies](docs/gitnexus/README.md), with [JSON](docs/gitnexus/code-graph.json), [GraphML](docs/gitnexus/code-graph.graphml), and [Mermaid](docs/gitnexus/modules.mmd) exports. Follow the [local browsing and refresh instructions](#gitnexus-代码图谱) above to index this checkout, start the local viewer, and regenerate exports. Static analysis may miss generated code, dynamic dispatch, and callbacks.
+Use GitNexus to explore classes, functions, calls, dependency injection, and static execution flows. Read the [graph guide and module dependencies](docs/gitnexus/README.md), or download the [full JSON](docs/gitnexus/code-graph.json), [GraphML](docs/gitnexus/code-graph.graphml), and [Mermaid module graph](docs/gitnexus/modules.mmd). GraphML can be imported into tools such as Gephi, Cytoscape, and yEd.
+
+### Start the local viewer
+
+Requires Node.js / npm and the GitNexus CLI. This graph was generated with GitNexus **1.6.12**. Run all commands below from the project root; they work in PowerShell. `npx` uses an installed GitNexus when available and may prompt to download it otherwise.
+
+On first use, or after changing the code, create or update the index:
+
+```powershell
+npx gitnexus analyze . --index-only --name Lumo
+```
+
+Once indexing finishes, start the viewer:
+
+```powershell
+npx gitnexus serve --host 127.0.0.1 --port 4747
+```
+
+Keep the terminal running, open **[local GitNexus](http://127.0.0.1:4747/)** in your browser, and select **Lumo** from the repository list to search symbols and explore dependencies and execution flows. If an index already exists, you can start the viewer directly without analyzing the project again.
+
+- `127.0.0.1` allows access only from the current computer. Start the service before opening the local link.
+- Press **Ctrl+C** in the terminal running the service to stop it.
+- If port `4747` is occupied, open the address above to check for an existing GitNexus service. Alternatively, use `--port 4748` and open that port in your browser.
+- The local index lives in `.gitnexus/` and is ignored by Git. Create a new index after cloning the project.
+
+### Refresh the exports
+
+After updating the index and starting the local service, open another terminal at the project root and run:
+
+```powershell
+node docs/gitnexus/export-graph.mjs
+```
+
+The script updates the graph guide, JSON, GraphML, and Mermaid files in `docs/gitnexus/`. If the service uses a different port, pass its address:
+
+```powershell
+node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
+```
+
+The graph comes from static analysis. Relationships involving Hilt/Room generated code, dynamic dispatch, Compose callbacks, and external SDKs may be incomplete. Execution flows are not runtime traces, and a missing edge does not prove that no dependency exists.
 
 ## Testing
 
