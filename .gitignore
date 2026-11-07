@@ -17,3 +17,6 @@ build/
 
 # Archify 图源草稿目录（成品已发布到 docs/diagrams）
 .archify/
+
+# GitNexus local index and caches (exports live in docs/gitnexus).
+.gitnexus/

@@ -44,6 +44,51 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 
 ---
 
+## GitNexus 代码图谱
+
+使用 GitNexus 分析类、函数、调用关系、依赖注入与静态执行链路。查看 [图谱说明与模块依赖图](docs/gitnexus/README.md)，或下载 [全量 JSON](docs/gitnexus/code-graph.json)、[GraphML](docs/gitnexus/code-graph.graphml) 和 [Mermaid 模块图](docs/gitnexus/modules.mmd)。GraphML 可导入 Gephi、Cytoscape、yEd 等工具。
+
+### 启动本机浏览服务
+
+需要 Node.js / npm 和 GitNexus CLI。本次图谱使用 GitNexus **1.6.12** 生成。以下命令均在项目根目录执行，适用于 PowerShell；`npx` 会优先使用已安装的 GitNexus，未安装时可能提示下载。
+
+首次使用或修改代码后，先建立或更新索引：
+
+```powershell
+npx gitnexus analyze . --index-only --name Lumo
+```
+
+索引完成后启动浏览服务：
+
+```powershell
+npx gitnexus serve --host 127.0.0.1 --port 4747
+```
+
+保持终端运行，在浏览器打开 **[本机 GitNexus](http://127.0.0.1:4747/)**，从仓库列表中选择 **Lumo**，即可搜索符号、查看依赖和执行链路。已有索引时可直接启动服务，无需每次重新分析。
+
+- `127.0.0.1` 仅供当前电脑访问；本机链接需要先启动服务。
+- 在运行服务的终端按 **Ctrl+C** 停止服务。
+- 若提示 `4747` 端口被占用，先打开上述地址检查是否已有 GitNexus 服务；也可改用 `--port 4748`，并访问对应端口。
+- 本地索引位于 `.gitnexus/`，已加入 Git 忽略规则；新克隆项目后需要重新建立索引。
+
+### 更新导出文件
+
+更新索引并启动本机服务后，在另一个终端的项目根目录执行：
+
+```powershell
+node docs/gitnexus/export-graph.mjs
+```
+
+脚本会更新 `docs/gitnexus/` 中的图谱说明、JSON、GraphML 和 Mermaid 文件。若服务使用其他端口，可指定地址：
+
+```powershell
+node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
+```
+
+图谱来自静态分析，Hilt/Room 生成代码、动态分派、Compose 回调和外部 SDK 的关系可能无法完整解析；执行链路不是运行时追踪结果，缺少连线不能证明不存在依赖。
+
+---
+
 ## 功能
 
 ### AI 对话
@@ -309,6 +354,10 @@ Requires JDK 17 and Android SDK with compileSdk/targetSdk 37. Configure keys on 
 ## Architecture
 
 Single-module MVVM: Compose UI + ViewModel + Repository, Hilt, Room, OkHttp + kotlinx.serialization. Modules: `data/local` (Room), `data/remote` (DeepSeek, Ark, Doubao Speech, Seeduplex, SSE), `domain`, `di`, `ui/{chat,translate,voice,list,settings,onboarding,shell,theme}`.
+
+### GitNexus code graph
+
+See the [code graph and module dependencies](docs/gitnexus/README.md), with [JSON](docs/gitnexus/code-graph.json), [GraphML](docs/gitnexus/code-graph.graphml), and [Mermaid](docs/gitnexus/modules.mmd) exports. Follow the [local browsing and refresh instructions](#gitnexus-代码图谱) above to index this checkout, start the local viewer, and regenerate exports. Static analysis may miss generated code, dynamic dispatch, and callbacks.
 
 ## Testing
 

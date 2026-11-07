@@ -1,0 +1,2 @@
+# Generated graph exports must not feed back into the source graph.
+docs/gitnexus/
