@@ -307,7 +307,23 @@ fun VoiceChatScreen(
                         modifier = Modifier.padding(top = 2.dp),
                     )
                 }
-                if (state.fallback) {
+                if (state.freeTier) {
+                    // 免费档常驻一行说明：逐轮对话 + 无端到端实时，避免被误当成卡顿。
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (palette.isDark) Color(0xFF1E2E22) else Color(0xFFE8F5EC),
+                    ) {
+                        Text(
+                            stringResource(R.string.free_voice_hint),
+                            color = if (palette.isDark) Color(0xFF9BD8A8) else Color(0xFF1F6B3A),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                } else if (state.fallback) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()

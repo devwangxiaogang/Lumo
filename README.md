@@ -7,7 +7,7 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 `Android 7.0+` · `Kotlin 2.4` · `Jetpack Compose` · `Material 3` · `MIT`
 
 - 包名：`com.yuguang.lumo`
-- 版本：`1.0 (versionCode 1)`
+- 版本：`1.1 (versionCode 2)`
 
 ---
 
@@ -99,6 +99,13 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 - 模型按服务商分组选择，可从服务商**拉取最新模型目录**（本地缓存约 24 小时）；目录外模型 ID 可手动填写。
 - 同一对话中途不换服务商；换模型只影响下一条消息。新建对话沿用最近一次成功发送的模型。
 - 消息操作：复制、朗读、重试；快捷追问（再简单点 / 举个例子 / 继续）；新消息自动滚动跟随。
+- 每条助手消息可查看 token 用量，会话级用量面板显示输入/输出/合计与估算费用（免费档恒 ¥0.00）。
+- 免费档对话可切换「深度思考」；免费池的思考与正文共享输出额度，默认关闭。
+- 会话可导出为 Markdown 或单文件 HTML（图片内联，浏览器可直接打印成 PDF）。
+- **分享入口**：任意 App 分享文字/图片，或在选中文字后用「语光」处理，都会新建会话并预填内容（不会自动发送）。
+- **全文检索**：搜索框同时检索标题与消息正文；中文走子串匹配、英文走 FTS 索引并高亮片段，点结果直接进会话。
+- **长期记忆**（默认关闭）：开启后助手在对话结束时提炼你的偏好与事实存到本机，后续对话自动参考。
+- **本地工具**（收费档）：模型可调用 `get_time` / `calculate` / `fetch_url`（含 SSRF 防护）/ `search_my_chats`，每轮最多 3 次。
 
 #### 识图与生图
 
@@ -156,6 +163,36 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 
 ---
 
+## 免费链路（全链路无需密钥）
+
+设置 → 语音与朗读 → **免费链路** 一档，是 1.1 新增的第二套完整实现：对话、翻译、朗读、识别、同传全部走公开免费接口，不需要任何 Key。收费档（豆包 / 方舟）行为与 1.0 完全一致，两套用档位卡 + 顶栏「免费」胶囊明确区分。
+
+| 能力 | 免费实现 | 边界 |
+|---|---|---|
+| 对话 | Kilo 公共免费池 `https://ai-gateway.kilo.ai/api/v1` | 12 个 `:free` 模型；429 / 模型下线自动降级到下一个；思考默认关闭 |
+| 文字翻译 | 免费池大模型直译 → MyMemory 兜底 | 仅 中/英/日/韩/俄 |
+| 朗读 | 百度 `gettts` → 有道 `dictvoice` → 本机 TTS | 仅 5 语种；单块 ≤400 字；MP3 本地解码 |
+| 语音识别 | 系统识别器 → 免费池 omni 模型（`input_audio`） | **试验级**，准确率明显低于豆包 |
+| 同传 | VAD 分段 → 识别 → 翻译 → 朗读 流水线 | 约 3–9 秒延迟，非端到端实时 |
+| 语音对话 | 逐轮「按住说话 → 识别 → 对话 → 朗读」 | 无 Seeduplex 级实时 |
+| 生图 / 复刻原声 | 不支持 | 界面置灰并说明 |
+
+**注意**：免费车道全部是公开网页/公共网关接口，可能被限速，请求可能被上游记录用于改进服务，请勿发送敏感内容。默认档位仍是收费档，升级后老用户体验不变。
+
+### 一键自检
+
+设置 → 语音与朗读 → 免费链路 → **自检免费链路**，依次探测「对话模型 / 翻译 / 朗读」三个部件，各自显示 ✓/✕ 与耗时。目的是在一处看完哪一环不通，而不是逐页试错。
+
+### 关于本地免费模型插件
+
+免费对话车道的能力边界参考了本机 `dsh-our-free-model` 插件（v2.8.3）的免费车道事实：Kilo 网关地址、`isFree` 清单过滤、`reasoning.enabled` 思考开关、`stream_options.include_usage` 用量帧、正文增量前降级的 fallback 语义。未移植其 OpenCode Zen 车道——那条链路要求铸造 session / project id 并重写整段官方系统提示与工具名，实测直连 429，耦合过重；同类需求用「自定义端点」覆盖。
+
+### 自定义端点
+
+设置 → 账户与密钥 → **自定义端点** 可填任意 OpenAI 兼容 Base URL（例如同网段的桌面端转发口 `http://192.168.1.10:18899/v1`）。Key 可选，回环与私有网段允许明文 HTTP。
+
+---
+
 ## 服务商与密钥
 
 | 服务商 | 默认地址 | 用途 |
@@ -163,10 +200,13 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 | DeepSeek | `https://api.deepseek.com` | 对话（DeepSeek 模型），部分模型支持识图 |
 | 豆包（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | 对话、模型目录、Seed Translation、Seedream 生图 |
 | 豆包语音 | 豆包语音控制台 | 语音识别、同声传译、朗读、实时语音对话（Seeduplex） |
+| 免费模型 | `https://ai-gateway.kilo.ai/api/v1` | 免密钥对话（12 个免费模型） |
+| 自定义端点 | 自填 | 任意 OpenAI 兼容服务 |
 
 - 豆包语音支持新版 `X-Api-Key`，也兼容旧版 **AppID + Access Token** 鉴权（朗读 / 同传 / 识别）。
 - 实时语音对话（Seeduplex）优先用 `X-Api-Key`；只有没填 API Key 时才走旧版 AppID + Access Token（`X-Api-App-ID` / `X-Api-Access-Key` / `X-Api-Resource-Id: volc.speech.dialog`）。
 - 实时语音需要账号开通 Seeduplex；未开通或 10 秒内建连失败时，应用会给出提示并自动降级为「按住说话」。
+- 免费模型与自定义端点不校验 Key；没有任何密钥时，新建对话默认用 `FREE/kilo-auto/free`。
 
 ---
 
@@ -243,8 +283,8 @@ app/src/main/java/com/yuguang/lumo/
 
 ## 测试
 
-- 单元测试：7 个文件、27 个用例（SSE 解码、流式渲染、协议解析、历史预算、语言规则、模型能力）。
-- 仪器测试：数据库迁移 2 → 3（真机）。
+- 单元测试：10 个文件、58 个用例（SSE 解码与思考字段别名、流式渲染、协议解析、历史预算、语言规则、模型能力、档位路由、免费语种边界）。
+- 仪器测试：数据库迁移 2 → 3 与 4 → 5（含 FTS 回填与触发器，真机）。
 
 ```bash
 ./gradlew :app:testDebugUnitTest
@@ -285,7 +325,7 @@ An Android AI assistant: chat with DeepSeek and Doubao (Volcengine Ark), transla
 `Android 7.0+` · `Kotlin 2.4` · `Jetpack Compose` · `Material 3` · `MIT`
 
 - Package: `com.yuguang.lumo`
-- Version: `1.0 (versionCode 1)`
+- Version: `1.1 (versionCode 2)`
 
 ## Preview
 
@@ -299,6 +339,22 @@ An Android AI assistant: chat with DeepSeek and Doubao (Volcengine Ark), transla
 
 ## Features
 
+### Two tiers: paid (Doubao) and free
+
+A **speech tier** switch keeps the two implementations apart. `PAID` is the 1.0 behaviour, unchanged, and needs Doubao/Ark keys. `FREE` runs the whole pipeline — chat, translation, speech, recognition, live interpretation — on public free endpoints with no key at all. The paid tier's UI is untouched; the free tier is marked with a tier card, a header badge, and inline capability notes.
+
+| Capability | Free implementation | Limits |
+|---|---|---|
+| Chat | Kilo public free pool (`ai-gateway.kilo.ai`) | 12 `:free` models; falls back to the next model on 429 / model-removed before any answer text |
+| Text translation | Free-pool LLM → MyMemory fallback | zh/en/ja/ko/ru only |
+| Read-aloud | Baidu `gettts` → Youdao `dictvoice` → device TTS | 5 languages, ≤400 chars per chunk, MP3 decoded locally |
+| Recognition | System recognizer → free-pool omni model (`input_audio`) | Experimental; noticeably less accurate than Doubao |
+| Live interpretation | VAD segments → ASR → translate → TTS pipeline | ~3–9 s latency, not end-to-end realtime |
+| Realtime voice | Turn-by-turn hold-to-talk instead of Seeduplex | No true realtime |
+| Image generation / voice cloning | Not available | Disabled with an inline explanation |
+
+The free tier uses public endpoints: it may be rate-limited and content may be logged upstream. The default tier stays `PAID`, so upgrading users see no change.
+
 ### Chat
 
 - Local conversations (Room) with search, pinning, long-press rename/delete, and quick actions.
@@ -306,6 +362,13 @@ An Android AI assistant: chat with DeepSeek and Doubao (Volcengine Ark), transla
 - Editable assistant persona (system prompt), model picker grouped by provider with a refreshable model catalog.
 - Vision input (up to 4 images) and image generation via Doubao Seedream (draw mode, explicit intent, or a `generate_image` tool call).
 - Quick follow-up chips and auto-scroll to new messages.
+- Per-message token usage and an estimated cost panel (free tier always ¥0.00).
+- Deep-thinking toggle for free-tier conversations (reasoning shares the output budget there).
+- Export a conversation as Markdown or a self-contained HTML file (images inlined, printable to PDF).
+- Incoming share: `SEND` (text/images) and `PROCESS_TEXT` pre-fill a new chat or jump to Translate — never auto-sends.
+- Full-text search across message bodies (FTS4 for Latin queries, LIKE for CJK), jumping straight to the conversation.
+- Optional long-term memory: off by default; when enabled, the assistant distils durable preferences after a turn and references them later. All local.
+- Local tool registry for paid-tier models: `get_time`, `calculate`, `fetch_url` (SSRF-guarded), `search_my_chats`, up to 3 rounds per turn.
 
 ### Translation
 
@@ -400,8 +463,8 @@ The graph comes from static analysis. Relationships involving Hilt/Room generate
 
 ## Testing
 
-- 7 unit-test files / 27 cases.
-- Instrumented migration test 2 → 3.
+- 10 unit-test files / 58 cases (SSE decoding incl. reasoning aliases, streaming overlay, wire protocol, history budget, language rules, model capabilities, tier routing, free-tier language limits).
+- Instrumented migration tests 2 → 3 and 4 → 5 (FTS backfill and triggers).
 
 ```bash
 ./gradlew :app:testDebugUnitTest

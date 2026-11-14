@@ -9,12 +9,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.ChatBackupManager
+import com.yuguang.lumo.data.FreeLaneSelfTest
+import com.yuguang.lumo.data.MemoryStore
+import com.yuguang.lumo.data.SelfTestItem
+import com.yuguang.lumo.data.local.MemoryEntity
 import com.yuguang.lumo.domain.ModelCatalogRepository
 import com.yuguang.lumo.domain.SettingsRepository
+import com.yuguang.lumo.domain.model.FreeTtsBackend
 import com.yuguang.lumo.domain.model.ModelChoice
 import com.yuguang.lumo.domain.model.ProviderConfig
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.SpeechPreferences
+import com.yuguang.lumo.domain.model.SpeechTier
 import com.yuguang.lumo.domain.model.TtsEngine
 import com.yuguang.lumo.domain.model.VoiceChoice
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,6 +40,8 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val modelCatalog: ModelCatalogRepository,
     private val backupManager: ChatBackupManager,
+    private val memoryStore: MemoryStore,
+    private val selfTest: FreeLaneSelfTest,
 ) : ViewModel() {
     var configs by mutableStateOf<Map<ProviderId, ProviderConfig>?>(null)
         private set
@@ -50,8 +58,13 @@ class SettingsViewModel @Inject constructor(
     val catalogs: StateFlow<Map<ProviderId, List<ModelChoice>>> = combine(
         modelCatalog.observe(ProviderId.DEEPSEEK),
         modelCatalog.observe(ProviderId.DOUBAO),
-    ) { deepseek, doubao ->
-        mapOf(ProviderId.DEEPSEEK to deepseek, ProviderId.DOUBAO to doubao)
+        modelCatalog.observe(ProviderId.FREE),
+    ) { deepseek, doubao, free ->
+        mapOf(
+            ProviderId.DEEPSEEK to deepseek,
+            ProviderId.DOUBAO to doubao,
+            ProviderId.FREE to free,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     init {
@@ -82,6 +95,61 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** 切换档位：收费（豆包） / 全链路免费。 */
+    fun setTier(tier: SpeechTier) {
+        viewModelScope.launch {
+            settingsRepository.editSpeech { it.copy(tier = tier) }
+            speech = settingsRepository.speech()
+        }
+    }
+
+    fun setFreeTtsBackend(backend: FreeTtsBackend) {
+        viewModelScope.launch {
+            settingsRepository.editSpeech { it.copy(freeTtsBackend = backend) }
+            speech = settingsRepository.speech()
+        }
+    }
+
+    fun setMemoryEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setMemoryEnabled(enabled)
+            memoryOn = enabled
+        }
+    }
+
+    var memoryOn by mutableStateOf(false)
+        private set
+
+    var memories by mutableStateOf<List<MemoryEntity>>(emptyList())
+        private set
+
+    init {
+        viewModelScope.launch {
+            memoryOn = settingsRepository.memoryEnabled()
+            memoryStore.observe().collect { memories = it }
+        }
+    }
+
+    fun addMemory(content: String) {
+        viewModelScope.launch {
+            val added = memoryStore.add(content)
+            messagesFlow.emit(
+                context.getString(if (added) R.string.saved_provider else R.string.memory_deleted),
+            )
+        }
+    }
+
+    fun deleteMemory(id: Long) {
+        viewModelScope.launch {
+            memoryStore.delete(id)
+            messagesFlow.emit(context.getString(R.string.memory_deleted))
+        }
+    }
+
+    fun toggleMemory(id: Long, enabled: Boolean) {
+        viewModelScope.launch { memoryStore.setEnabled(id, enabled) }
+    }
+
     fun update(config: ProviderConfig) {
         val current = configs ?: return
         configs = current + (config.provider to config)
@@ -103,6 +171,45 @@ class SettingsViewModel @Inject constructor(
             messagesFlow.emit(
                 if (error == null) context.getString(R.string.models_refreshed)
                 else error,
+            )
+        }
+    }
+
+    // --- 免费链路自检 ---
+
+    var selfTesting by mutableStateOf(false)
+        private set
+
+    var selfTestResults by mutableStateOf<List<SelfTestItem>>(emptyList())
+        private set
+
+    fun runSelfTest() {
+        if (selfTesting) return
+        viewModelScope.launch {
+            selfTesting = true
+            selfTestResults = emptyList()
+            val results = runCatching { selfTest.run() }.getOrElse { emptyList() }
+            selfTestResults = results
+            selfTesting = false
+            messagesFlow.emit(
+                context.getString(
+                    if (results.all { it.ok }) R.string.free_self_passed else R.string.free_self_partial,
+                ),
+            )
+        }
+    }
+
+    /** 自定义端点：用一次模型列表探测验证 Base URL 是否可达。 */
+    fun testConnection(provider: ProviderId) {
+        val config = configs?.get(provider) ?: return
+        viewModelScope.launch {
+            messagesFlow.emit(context.getString(R.string.free_self_test_running))
+            val start = System.currentTimeMillis()
+            val error = modelCatalog.refresh(provider)
+            val elapsed = System.currentTimeMillis() - start
+            messagesFlow.emit(
+                if (error == null) context.getString(R.string.connection_ok, elapsed)
+                else context.getString(R.string.connection_failed, error),
             )
         }
     }

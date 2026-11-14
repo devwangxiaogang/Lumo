@@ -15,10 +15,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.SpeechReader
+import com.yuguang.lumo.data.SpeechRouter
 import com.yuguang.lumo.data.remote.DoubaoAsrClient
 import com.yuguang.lumo.data.remote.DoubaoVoiceChatClient
 import com.yuguang.lumo.data.remote.VoiceChatEvent
 import com.yuguang.lumo.data.remote.VoiceSession
+import com.yuguang.lumo.data.remote.free.FreeAsrClient
 import com.yuguang.lumo.domain.LlmProvider
 import com.yuguang.lumo.domain.SettingsRepository
 import com.yuguang.lumo.domain.model.ChatRequest
@@ -56,8 +58,10 @@ data class VoiceChatUiState(
     val voice: VoiceChoice = VoiceChoice.FEMALE,
     val speed: Int = 0,
     val durationSec: Int = 0,
-    /** 实时语音不可用（未开通/无权限）时，自动切换到识别→对话→朗读的兜底链路。 */
+    /** 免费链路不可用（未开通/无权限）时，自动切换到识别→对话→朗读的兜底链路。 */
     val fallback: Boolean = false,
+    /** 当前会话走的是全链路免费档；用于顶部提示条与配色。 */
+    val freeTier: Boolean = false,
 )
 
 /**
@@ -72,6 +76,7 @@ class VoiceChatViewModel @Inject constructor(
     private val client: DoubaoVoiceChatClient,
     private val speechReader: SpeechReader,
     private val speechRecognizer: DoubaoAsrClient,
+    private val freeRecognizer: FreeAsrClient,
     private val providers: Map<ProviderId, @JvmSuppressWildcards LlmProvider>,
 ) : ViewModel() {
     var state by mutableStateOf(VoiceChatUiState())
@@ -115,6 +120,22 @@ class VoiceChatViewModel @Inject constructor(
         history.clear()
         connectJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                val preferences = settingsRepository.speech()
+                // 免费档没有端到端实时语音：直接进入逐轮对话，不去尝试 Seeduplex。
+                if (!SpeechRouter.realtimeVoice(preferences)) {
+                    withContext(Dispatchers.Main.immediate) {
+                        if (generation != sessionGeneration) return@withContext
+                        state = state.copy(
+                            connecting = false,
+                            connected = true,
+                            fallback = true,
+                            freeTier = true,
+                            error = null,
+                        )
+                        startTicker()
+                    }
+                    return@launch
+                }
                 val config = settingsRepository.get(ProviderId.DOUBAO)
                 val speaker = (if (state.voice == VoiceChoice.CLONE) VoiceChoice.FEMALE else state.voice).let { it.speakerId ?: it.ttsSpeakerId }
                 val created = client.connect(
@@ -133,7 +154,7 @@ class VoiceChatViewModel @Inject constructor(
                     session = created
                     // 文档要求：麦克风关闭期间不发静音事件，服务端会因收不到音频超时。
                     created.mute()
-                    state = state.copy(connecting = false, connected = true, fallback = false)
+                    state = state.copy(connecting = false, connected = true, fallback = false, freeTier = false)
                     startTicker()
                 }
             } catch (timeout: TimeoutCancellationException) {
@@ -268,10 +289,18 @@ class VoiceChatViewModel @Inject constructor(
         current.sendText(content)
     }
 
-    /** 兜底链路：豆包识别（返回 WAV 文本）。 */
+    /** 兜底链路：豆包识别（返回 WAV 文本）；免费档走免费识别。 */
     fun recognize(wav: ByteArray, onSuccess: (String) -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch {
             try {
+                val preferences = settingsRepository.speech()
+                if (SpeechRouter.asr(preferences) == SpeechRouter.AsrRoute.FREE) {
+                    state = state.copy(partialUserText = context.getString(R.string.free_asr_checking))
+                    val text = freeRecognizer.transcribe(wav, "zh")
+                    state = state.copy(partialUserText = "")
+                    onSuccess(text)
+                    return@launch
+                }
                 val config = settingsRepository.get(ProviderId.DOUBAO)
                 val apiKey = config.speechApiKey.trim()
                 val appId = config.speechAppId.trim()
@@ -317,7 +346,8 @@ class VoiceChatViewModel @Inject constructor(
             try {
                 val selected = settingsRepository.startingModel()
                 val config = settingsRepository.get(selected.provider)
-                if (config.apiKey.isBlank()) {
+                // 免费车道不要求 Key；只有收费车道缺 Key 才算失败。
+                if (config.apiKey.isBlank() && selected.provider.requiresKey) {
                     state = state.copy(error = context.getString(R.string.error_api_key_invalid))
                     return@launch
                 }
@@ -329,7 +359,16 @@ class VoiceChatViewModel @Inject constructor(
                 llm.stream(
                     apiKey = config.apiKey,
                     baseUrl = config.baseUrl,
-                    request = ChatRequest(model = selected.model, messages = history.toList()),
+                    request = ChatRequest(
+                        model = selected.model,
+                        messages = history.toList(),
+                        fallbackModels = if (selected.provider == ProviderId.FREE) {
+                            com.yuguang.lumo.domain.model.freeFallbackChain.filter { it != selected.model }
+                        } else {
+                            emptyList()
+                        },
+                        maxOutputTokens = 1_024,
+                    ),
                 ).catch { error ->
                     failed = true
                     state = state.copy(

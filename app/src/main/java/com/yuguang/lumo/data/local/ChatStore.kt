@@ -21,6 +21,8 @@ data class ConversationEntity(
     val updatedAt: Long,
     /** 置顶会话排在列表最前。 */
     val pinned: Boolean = false,
+    /** 是否请求深度思考。免费车道的思考与正文共享输出额度，默认关闭。 */
+    val thinking: Boolean = false,
 )
 
 @Entity(
@@ -44,6 +46,11 @@ data class MessageEntity(
     val status: String,
     val error: String = "",
     val createdAt: Long,
+    /** 本轮请求的输入/输出 token，用量面板用；0 表示上游没给。 */
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    /** 本轮工具调用的轨迹（JSON 行），界面折叠展示。 */
+    val toolTrace: String = "",
 )
 
 @Entity(
@@ -69,7 +76,7 @@ data class AttachmentEntity(
     val sortOrder: Int = 0,
 )
 
-/** 列表页用的会话摘要：带最后一条消息预览。 */
+/** 列表页用的会话摘要：带最后一条消息预览与累计 token。 */
 data class ConversationSummaryRow(
     val id: Long,
     val title: String,
@@ -78,7 +85,10 @@ data class ConversationSummaryRow(
     val systemPrompt: String,
     val updatedAt: Long,
     val pinned: Boolean,
+    val thinking: Boolean,
     val preview: String?,
+    /** 会话累计 token；上游没给 usage 时为 0，界面不显示。 */
+    val totalTokens: Int,
 )
 
 @Dao
@@ -92,18 +102,24 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun get(id: Long): ConversationEntity?
 
-    /** 列表页：会话 + 最后一条消息预览，置顶优先。 */
+    /** 列表页：会话 + 最后一条消息预览 + 累计 token，置顶优先。 */
     @Query(
         "SELECT c.id AS id, c.title AS title, c.provider AS provider, c.model AS model, " +
             "c.systemPrompt AS systemPrompt, c.updatedAt AS updatedAt, c.pinned AS pinned, " +
+            "c.thinking AS thinking, " +
             "(SELECT m.content FROM messages m WHERE m.conversationId = c.id " +
-            "ORDER BY m.createdAt DESC, m.id DESC LIMIT 1) AS preview " +
+            "ORDER BY m.createdAt DESC, m.id DESC LIMIT 1) AS preview, " +
+            "(SELECT COALESCE(SUM(m2.promptTokens + m2.completionTokens), 0) FROM messages m2 " +
+            "WHERE m2.conversationId = c.id) AS totalTokens " +
             "FROM conversations c ORDER BY c.pinned DESC, c.updatedAt DESC",
     )
     fun observeSummaries(): Flow<List<ConversationSummaryRow>>
 
     @Query("UPDATE conversations SET pinned = :pinned WHERE id = :id")
     suspend fun setPinned(id: Long, pinned: Boolean)
+
+    @Query("UPDATE conversations SET thinking = :thinking WHERE id = :id")
+    suspend fun setThinking(id: Long, thinking: Boolean)
 
     @Query("UPDATE conversations SET title = :title WHERE id = :id")
     suspend fun rename(id: Long, title: String)
@@ -160,6 +176,14 @@ interface MessageDao {
             "WHERE id = :id",
     )
     suspend fun updateBody(id: Long, content: String, reasoning: String, status: String, error: String)
+
+    @Query(
+        "UPDATE messages SET promptTokens = :prompt, completionTokens = :completion WHERE id = :id",
+    )
+    suspend fun updateUsage(id: Long, prompt: Int, completion: Int)
+
+    @Query("UPDATE messages SET toolTrace = :trace WHERE id = :id")
+    suspend fun updateToolTrace(id: Long, trace: String)
 
     /**
      * 进程在流式生成中被杀掉时，回复会停在 STREAMING。

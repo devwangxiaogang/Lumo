@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
+import com.yuguang.lumo.data.ChatExporter
 import com.yuguang.lumo.data.SpeechReader
 import com.yuguang.lumo.data.local.ChatMediaStore
 import com.yuguang.lumo.data.remote.DoubaoAsrClient
@@ -55,6 +56,7 @@ class ChatViewModel @Inject constructor(
     private val modelCatalog: ModelCatalogRepository,
     private val speechRecognizer: DoubaoAsrClient,
     private val speechReader: SpeechReader,
+    private val exporter: ChatExporter,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val conversationId: Long = savedStateHandle.get<Long>("id")
@@ -123,6 +125,12 @@ class ChatViewModel @Inject constructor(
                 modelCatalog.refreshIfStale(provider)
             }
         }
+        // 分享进来的内容：预填到输入框与附图区，不自动发送。
+        viewModelScope.launch {
+            val draft = repository.takeDraft(conversationId) ?: return@launch
+            if (draft.text.isNotBlank()) input.value = draft.text
+            if (draft.uris.isNotEmpty()) pendingImages.value = draft.uris
+        }
     }
 
     fun updateInput(value: String) {
@@ -131,6 +139,25 @@ class ChatViewModel @Inject constructor(
 
     fun toggleDrawMode() {
         drawMode.update { !it }
+    }
+
+    fun toggleThinking() {
+        val current = state.value.conversation ?: return
+        viewModelScope.launch { repository.setThinking(conversationId, !current.thinking) }
+    }
+
+    /** 导出当前会话；成功/失败都通过 errors 通道反馈。 */
+    fun export(uri: Uri, format: ChatExporter.Format) {
+        viewModelScope.launch {
+            runCatching { exporter.export(conversationId, uri, format) }.fold(
+                onSuccess = { count -> errorsFlow.emit(context.getString(R.string.export_done, count)) },
+                onFailure = { error ->
+                    errorsFlow.emit(
+                        context.getString(R.string.export_failed) + "：" + error.message.orEmpty(),
+                    )
+                },
+            )
+        }
     }
 
     fun addImages(uris: List<Uri>) {

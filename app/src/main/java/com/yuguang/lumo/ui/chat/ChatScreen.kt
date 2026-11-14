@@ -15,6 +15,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -114,12 +119,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.yuguang.lumo.R
+import com.yuguang.lumo.data.ChatExporter
 import com.yuguang.lumo.data.local.ChatMediaStore
 import com.yuguang.lumo.domain.model.ChatMessage
+import com.yuguang.lumo.domain.model.Conversation
 import com.yuguang.lumo.domain.model.MessageStatus
 import com.yuguang.lumo.domain.model.Role
 import com.yuguang.lumo.ui.localizedSummary
 import com.yuguang.lumo.ui.model.ModelPickerDialog
+import com.yuguang.lumo.ui.components.TierBadge
+import com.yuguang.lumo.domain.model.SpeechTier
+import com.yuguang.lumo.domain.model.ProviderId
 import kotlinx.coroutines.launch
 import java.io.File
 import android.content.ClipData
@@ -144,6 +154,8 @@ fun ChatScreen(
     var showModels by remember { mutableStateOf(false) }
     var showPersona by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var showUsage by remember { mutableStateOf(false) }
+    var exportFormat by remember { mutableStateOf(ChatExporter.Format.MARKDOWN) }
     var previewPath by remember { mutableStateOf<String?>(null) }
     var voiceMode by remember { mutableStateOf(false) }
     var voicePhase by remember { mutableStateOf(VoicePhase.Idle) }
@@ -180,6 +192,13 @@ fun ChatScreen(
     ) { uris ->
         if (uris.isNotEmpty()) viewModel.addImages(uris)
     }
+    // 导出：CreateDocument 让用户在系统文件选择器里挑位置与文件名。
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(exportFormat.mime),
+    ) { uri ->
+        if (uri != null) viewModel.export(uri, exportFormat)
+    }
+    val conversationTitle = state.conversation?.title?.takeIf { it.isNotBlank() } ?: "chat"
     DisposableEffect(speech) {
         onDispose { speech.destroy() }
     }
@@ -249,6 +268,10 @@ fun ChatScreen(
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(15.dp),
                                 )
+                                if (conversation.provider == ProviderId.FREE) {
+                                    Spacer(Modifier.width(6.dp))
+                                    TierBadge(tier = SpeechTier.FREE)
+                                }
                             }
                         }
                     }
@@ -273,6 +296,52 @@ fun ChatScreen(
                                 onClick = {
                                     showMore = false
                                     onOpenSettings()
+                                },
+                            )
+                            // 深度思考只对免费车道显示：豆包侧思考由模型默认行为决定。
+                            if (state.conversation?.provider == ProviderId.FREE) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.thinking_toggle)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (state.conversation?.thinking == true) {
+                                                Icons.Filled.CheckBox
+                                            } else {
+                                                Icons.Filled.CheckBoxOutlineBlank
+                                            },
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMore = false
+                                        viewModel.toggleThinking()
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.usage_title)) },
+                                leadingIcon = { Icon(Icons.Filled.Insights, contentDescription = null) },
+                                onClick = {
+                                    showMore = false
+                                    showUsage = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_markdown)) },
+                                leadingIcon = { Icon(Icons.Filled.Description, contentDescription = null) },
+                                onClick = {
+                                    showMore = false
+                                    exportFormat = ChatExporter.Format.MARKDOWN
+                                    exportLauncher.launch("$conversationTitle.md")
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export_html)) },
+                                leadingIcon = { Icon(Icons.Filled.Code, contentDescription = null) },
+                                onClick = {
+                                    showMore = false
+                                    exportFormat = ChatExporter.Format.HTML
+                                    exportLauncher.launch("$conversationTitle.html")
                                 },
                             )
                         }
@@ -404,6 +473,70 @@ fun ChatScreen(
     }
     previewPath?.let { path ->
         ImagePreviewDialog(path = path, onDismiss = { previewPath = null })
+    }
+    if (showUsage) {
+        UsageSheet(
+            conversation = conversation,
+            messages = state.messages,
+            onDismiss = { showUsage = false },
+        )
+    }
+}
+
+/**
+ * 用量面板：按模型分组统计 token。
+ *
+ * 上游没给 usage 时显示「—」而不是 0，避免让人误以为「免费所以不计数」。
+ */
+@Composable
+private fun UsageSheet(
+    conversation: Conversation?,
+    messages: List<ChatMessage>,
+    onDismiss: () -> Unit,
+) {
+    val answered = messages.filter { it.role == Role.ASSISTANT && it.status == MessageStatus.DONE }
+    val prompt = answered.sumOf { it.promptTokens }
+    val completion = answered.sumOf { it.completionTokens }
+    val free = conversation?.provider == ProviderId.FREE
+    val estimated = if (free) 0.0 else estimateCost(conversation?.provider, conversation?.model, prompt, completion)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.usage_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                UsageRow(stringResource(R.string.usage_rounds), answered.size.toString())
+                UsageRow(stringResource(R.string.usage_prompt), if (prompt > 0) prompt.toString() else "—")
+                UsageRow(stringResource(R.string.usage_completion), if (completion > 0) completion.toString() else "—")
+                UsageRow(
+                    stringResource(R.string.usage_total),
+                    if (prompt + completion > 0) (prompt + completion).toString() else "—",
+                )
+                UsageRow(
+                    stringResource(R.string.usage_cost),
+                    if (prompt + completion > 0) formatCost(estimated) else "—",
+                )
+                if (free) {
+                    Text(
+                        stringResource(R.string.free_train_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun UsageRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 

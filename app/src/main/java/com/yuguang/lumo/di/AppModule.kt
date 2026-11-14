@@ -8,7 +8,9 @@ import androidx.security.crypto.MasterKey
 import com.yuguang.lumo.data.local.AppDatabase
 import com.yuguang.lumo.data.local.AttachmentDao
 import com.yuguang.lumo.data.local.ConversationDao
+import com.yuguang.lumo.data.local.MemoryDao
 import com.yuguang.lumo.data.local.MessageDao
+import com.yuguang.lumo.data.local.SearchDao
 import com.yuguang.lumo.data.local.TranslationDao
 import dagger.Module
 import dagger.Provides
@@ -69,8 +71,9 @@ object AppModule {
             .addMigrations(
                 com.yuguang.lumo.data.local.MIGRATION_2_3,
                 com.yuguang.lumo.data.local.MIGRATION_3_4,
+                com.yuguang.lumo.data.local.MIGRATION_4_5,
             )
-            // 未覆盖的跨版本变更才重建，避免丢掉 2→3 的会话数据。
+            // 未覆盖的跨版本变更才重建，避免丢掉已迁移的会话数据。
             .fallbackToDestructiveMigration(true)
             .build()
 
@@ -85,6 +88,12 @@ object AppModule {
 
     @Provides
     fun provideTranslationDao(database: AppDatabase): TranslationDao = database.translationDao()
+
+    @Provides
+    fun provideSearchDao(database: AppDatabase): SearchDao = database.searchDao()
+
+    @Provides
+    fun provideMemoryDao(database: AppDatabase): MemoryDao = database.memoryDao()
 
     @Provides
     @Singleton

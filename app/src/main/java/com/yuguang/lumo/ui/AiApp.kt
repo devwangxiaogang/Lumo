@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -13,11 +14,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.yuguang.lumo.ui.chat.ChatScreen
 import com.yuguang.lumo.ui.list.ConversationListScreen
 import com.yuguang.lumo.ui.settings.AboutScreen
 import com.yuguang.lumo.ui.settings.AppearanceScreen
 import com.yuguang.lumo.ui.settings.DataSettingsScreen
+import com.yuguang.lumo.ui.settings.MemoryScreen
 import com.yuguang.lumo.ui.settings.ProviderSettingsScreen
 import com.yuguang.lumo.ui.settings.SettingsHomeScreen
 import com.yuguang.lumo.ui.settings.VoicePrefsScreen
@@ -38,6 +41,7 @@ object Routes {
     const val VoicePrefs = "settings/voice"
     const val Appearance = "settings/appearance"
     const val Data = "settings/data"
+    const val Memory = "settings/memory"
     const val About = "settings/about"
 
     fun chat(id: Long) = "chat/$id"
@@ -45,10 +49,19 @@ object Routes {
 }
 
 @Composable
-fun AiApp() {
+fun AiApp(shareViewModel: ShareViewModel = hiltViewModel()) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    // 分享内容只预填、不自动发送：既省额度，也让用户先看一眼。
+    LaunchedEffect(Unit) {
+        shareViewModel.handlePending { target ->
+            when (target) {
+                is ShareTarget.Translate -> nav.navigate(Routes.Translate)
+                is ShareTarget.Chat -> nav.navigate(Routes.chat(target.conversationId))
+            }
+        }
+    }
     val section = when (route) {
         Routes.Translate -> AppSection.Translate
         Routes.Voice -> AppSection.VoiceChat
@@ -103,6 +116,7 @@ fun AiApp() {
                     onOpenVoicePrefs = { nav.navigate(Routes.VoicePrefs) },
                     onOpenAppearance = { nav.navigate(Routes.Appearance) },
                     onOpenData = { nav.navigate(Routes.Data) },
+                    onOpenMemory = { nav.navigate(Routes.Memory) },
                     onOpenAbout = { nav.navigate(Routes.About) },
                 )
             }
@@ -124,6 +138,9 @@ fun AiApp() {
             }
             composable(Routes.Data) {
                 DataSettingsScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.Memory) {
+                MemoryScreen(onBack = { nav.popBackStack() })
             }
             composable(Routes.About) {
                 AboutScreen(onBack = { nav.popBackStack() })

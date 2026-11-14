@@ -68,8 +68,7 @@ class MigrationTest {
     }
 
     /** 建库 SQL 取自导出的 v3 schema，去掉 2→3 才新增的 message_attachments。 */
-    private fun createVersion2Database(path: File) {
-        path.parentFile?.mkdirs()
+    private fun createVersion2Database(path: File) {        path.parentFile?.mkdirs()
         val db = SQLiteDatabase.openOrCreateDatabase(path, null)
         try {
             db.execSQL(

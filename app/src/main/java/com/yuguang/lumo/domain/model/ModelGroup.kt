@@ -10,6 +10,8 @@ enum class ModelGroup(val key: String, @StringRes val labelRes: Int) {
     SEEDREAM("seedream", R.string.group_seedream),
     ARK_DEEPSEEK("ark_deepseek", R.string.group_ark_deepseek),
     ARK_GLM("ark_glm", R.string.group_ark_glm),
+    FREE("free", R.string.group_free),
+    CUSTOM("custom", R.string.group_custom),
     ;
 
     companion object {

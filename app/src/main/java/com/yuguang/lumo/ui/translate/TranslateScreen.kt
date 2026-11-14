@@ -435,7 +435,17 @@ private fun LiveStage(
     modifier: Modifier = Modifier,
 ) {
     val active = state.livePhase == LivePhase.Connecting || state.livePhase == LivePhase.Listening
-    val blocked = livePairError(state.liveSourceLang, state.liveTargetLang, state.liveVoice)
+    // 免费档的语种边界更窄，且不支持复刻原声：状态与按钮都按免费规则判定。
+    val freeTier = state.tier == com.yuguang.lumo.domain.model.SpeechTier.FREE
+    val blocked = if (freeTier) {
+        com.yuguang.lumo.domain.model.freeLivePairError(
+            state.liveSourceLang,
+            state.liveTargetLang,
+            state.liveVoice,
+        )
+    } else {
+        livePairError(state.liveSourceLang, state.liveTargetLang, state.liveVoice)
+    }
     val scroll = rememberScrollState()
     val empty = state.sourceCaption.isBlank() && state.targetCaption.isBlank() &&
         state.sourcePartial.isBlank() && state.targetPartial.isBlank()
@@ -475,10 +485,10 @@ private fun LiveStage(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (empty && !active) {
-                LiveEmptyHint()
+                LiveEmptyHint(freeTier = freeTier)
                 LastRecordHint(records = records, onOpen = onOpenRecord)
             } else if (empty && active) {
-                LiveEmptyHint(listening = true)
+                LiveEmptyHint(listening = true, freeTier = freeTier)
             } else {
                 CaptionCard(stringResource(R.string.source_label), state.sourceCaption, state.sourcePartial, compact = true)
                 CaptionCard(stringResource(R.string.target_label), state.targetCaption, state.targetPartial, compact = false)
@@ -899,7 +909,7 @@ private fun HoldToTalkButton(
 }
 
 @Composable
-private fun LiveEmptyHint(listening: Boolean = false) {
+private fun LiveEmptyHint(listening: Boolean = false, freeTier: Boolean = false) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -915,9 +925,9 @@ private fun LiveEmptyHint(listening: Boolean = false) {
             )
             if (!listening) {
                 Text(
-                    stringResource(R.string.live_hint),
+                    stringResource(if (freeTier) R.string.free_live_hint else R.string.live_hint),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (freeTier) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

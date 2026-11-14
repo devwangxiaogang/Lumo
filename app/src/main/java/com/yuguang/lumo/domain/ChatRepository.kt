@@ -6,8 +6,13 @@ import com.yuguang.lumo.domain.model.Conversation
 import com.yuguang.lumo.domain.model.ProviderId
 import kotlinx.coroutines.flow.Flow
 
-interface ChatRepository {
-    fun observeConversations(): Flow<List<Conversation>>
+/** 分享进来、还没被发送的草稿。只在内存里存活，进程重启即丢弃。 */
+data class ChatDraft(
+    val text: String = "",
+    val uris: List<Uri> = emptyList(),
+)
+
+interface ChatRepository {    fun observeConversations(): Flow<List<Conversation>>
 
     fun observeConversation(id: Long): Flow<Conversation?>
 
@@ -24,6 +29,18 @@ interface ChatRepository {
     suspend fun deleteConversation(id: Long)
 
     suspend fun setPinned(id: Long, pinned: Boolean)
+
+    /** 切换深度思考；只影响后续消息。 */
+    suspend fun setThinking(id: Long, thinking: Boolean)
+
+    /** 分享进来的文字先作为草稿，界面预填但不自动发送。 */
+    suspend fun setDraft(conversationId: Long, text: String)
+
+    /** 分享进来的图片先挂到会话上，界面预填但不自动发送。 */
+    suspend fun setDraftImages(conversationId: Long, uris: List<Uri>)
+
+    /** 取出并清空草稿；没有草稿时返回 null。 */
+    fun takeDraft(conversationId: Long): ChatDraft?
 
     suspend fun renameConversation(id: Long, title: String)
 

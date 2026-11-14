@@ -29,13 +29,20 @@ class OpenAiCompatibleClient @Inject constructor(
     private val http: OkHttpClient,
     private val json: Json,
 ) {
-    fun stream(url: String, apiKey: String, body: JsonObject): Flow<StreamEvent> = flow {
-        val request = Request.Builder()
+    fun stream(
+        url: String,
+        apiKey: String,
+        body: JsonObject,
+        headers: Map<String, String> = emptyMap(),
+    ): Flow<StreamEvent> = flow {
+        val builder = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer $apiKey")
             .header("Accept", "text/event-stream")
             .post(body.toString().toRequestBody(JSON_MEDIA))
-            .build()
+        // 免密钥车道（免费池 / 本地端点）不发送空的 Authorization。
+        if (apiKey.isNotBlank()) builder.header("Authorization", "Bearer $apiKey")
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        val request = builder.build()
         val call = http.newCall(request)
         currentCoroutineContext().job.invokeOnCompletion { cause ->
             if (cause != null) call.cancel()
@@ -48,7 +55,8 @@ class OpenAiCompatibleClient @Inject constructor(
                     return@flow
                 }
                 if (!response.isSuccessful) {
-                    emit(StreamEvent.Failed(errorMessage(response.code, payload.string())))
+                    val raw = payload.string()
+                    emit(StreamEvent.Failed(errorMessage(response.code, raw), isRetryable(response.code, raw)))
                     return@flow
                 }
                 val contentType = response.header("Content-Type").orEmpty()
@@ -59,6 +67,7 @@ class OpenAiCompatibleClient @Inject constructor(
                 val source = payload.source()
                 var promptTokens: Int? = null
                 var completionTokens: Int? = null
+                var costUsd: Double? = null
                 val toolBuf = sortedMapOf<Int, ToolCallBuffer>()
                 while (currentCoroutineContext().isActive && !source.exhausted()) {
                     val line = source.readUtf8Line() ?: break
@@ -75,21 +84,22 @@ class OpenAiCompatibleClient @Inject constructor(
                             is ChunkPiece.Usage -> {
                                 promptTokens = piece.promptTokens ?: promptTokens
                                 completionTokens = piece.completionTokens ?: completionTokens
+                                costUsd = piece.costUsd ?: costUsd
                             }
                             ChunkPiece.Done -> {
                                 emitTools(toolBuf)
-                                emit(StreamEvent.Completed(promptTokens, completionTokens))
+                                emit(StreamEvent.Completed(promptTokens, completionTokens, costUsd))
                                 return@flow
                             }
                             is ChunkPiece.Invalid -> {
-                                emit(StreamEvent.Failed(friendlyError(piece.message)))
+                                emit(StreamEvent.Failed(friendlyError(piece.message), piece.retryable))
                                 return@flow
                             }
                         }
                     }
                 }
                 emitTools(toolBuf)
-                emit(StreamEvent.Completed(promptTokens, completionTokens))
+                emit(StreamEvent.Completed(promptTokens, completionTokens, costUsd))
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -123,7 +133,7 @@ class OpenAiCompatibleClient @Inject constructor(
             emit(StreamEvent.Delta(text))
             emit(StreamEvent.Completed(null, null))
         } else {
-            emit(StreamEvent.Failed(errorMessage(200, raw)))
+            emit(StreamEvent.Failed(errorMessage(200, raw), retryable = isRetryable(200, raw)))
         }
     }
 
@@ -148,6 +158,8 @@ class OpenAiCompatibleClient @Inject constructor(
         return message.ifBlank { context.getString(R.string.parse_model_failed) }
     }
 
+    private fun friendlyError(message: String, retryable: Boolean): String = friendlyError(message)
+
     /** 把服务端英文错误归一到能直接指导操作的中文提示。 */
     private fun mapCommonError(httpCode: Int, message: String): String? {
         val blob = message.lowercase()
@@ -170,7 +182,25 @@ class OpenAiCompatibleClient @Inject constructor(
             blob.contains("invalidendpointormodel") ||
             blob.contains("model not found") ||
             blob.contains("does not exist") ||
-            blob.contains("notfound")
+            blob.contains("notfound") ||
+            blob.contains("model is unavailable")
+    }
+
+    /**
+     * 免费车道会降级到下一个模型。
+     *
+     * 只有「这次请求本身没成功」才值得换模型：限流、模型下线、网关 5xx。
+     * 鉴权/余额类错误换模型也没用，直接报错。
+     */
+    private fun isRetryable(httpCode: Int, raw: String): Boolean {
+        if (httpCode == 429) return true
+        if (httpCode in 500..599) return true
+        if (isMissingModel(httpCode, "", raw)) return true
+        val blob = raw.lowercase()
+        return blob.contains("rate limit") ||
+            blob.contains("quota") ||
+            blob.contains("overloaded") ||
+            blob.contains("unavailable")
     }
 
     private data class ToolCallBuffer(

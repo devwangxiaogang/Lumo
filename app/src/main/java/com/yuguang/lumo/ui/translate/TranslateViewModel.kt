@@ -19,17 +19,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.SpeechReader
+import com.yuguang.lumo.data.SpeechRouter
 import com.yuguang.lumo.data.local.TranslationDao
 import com.yuguang.lumo.data.local.TranslationEntity
 import com.yuguang.lumo.data.remote.AstEvent
 import com.yuguang.lumo.data.remote.DoubaoAsrClient
 import com.yuguang.lumo.data.remote.DoubaoAstClient
 import com.yuguang.lumo.data.remote.DoubaoTranslateClient
+import com.yuguang.lumo.data.remote.free.FreeAsrClient
+import com.yuguang.lumo.data.remote.free.FreeInterpreterClient
+import com.yuguang.lumo.data.remote.free.FreeTranslateClient
 import com.yuguang.lumo.domain.SettingsRepository
 import com.yuguang.lumo.domain.model.DEFAULT_TRANSLATION_MODEL
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.SpeechPreferences
 import com.yuguang.lumo.domain.model.VoiceChoice
+import com.yuguang.lumo.domain.model.freeLivePairError
 import com.yuguang.lumo.domain.model.livePairError
 import com.yuguang.lumo.ui.chat.VoicePhase
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -71,6 +76,8 @@ data class TranslateUiState(
     val message: String? = null,
     val offerLocalFor: String? = null,
     val voicePhase: VoicePhase = VoicePhase.Idle,
+    /** 当前档位；翻译页据此提示免费链路的语种与延迟边界。 */
+    val tier: com.yuguang.lumo.domain.model.SpeechTier = com.yuguang.lumo.domain.model.SpeechTier.PAID,
 )
 
 @HiltViewModel
@@ -81,6 +88,9 @@ class TranslateViewModel @Inject constructor(
     private val translator: DoubaoTranslateClient,
     private val interpreter: DoubaoAstClient,
     private val speechRecognizer: DoubaoAsrClient,
+    private val freeRecognizer: FreeAsrClient,
+    private val freeTranslator: FreeTranslateClient,
+    private val freeInterpreter: FreeInterpreterClient,
     private val speechReader: SpeechReader,
 ) : ViewModel() {
     var state by mutableStateOf(TranslateUiState())
@@ -99,6 +109,7 @@ class TranslateViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.observeSpeech().collect { preferences ->
                 state = state.copy(
+                    tier = preferences.tier,
                     textSource = preferences.textSource,
                     textTarget = preferences.textTarget,
                     model = preferences.translationModel,
@@ -186,6 +197,12 @@ class TranslateViewModel @Inject constructor(
     fun recognize(wav: ByteArray, onSuccess: (String) -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch {
             try {
+                val preferences = settingsRepository.speech()
+                if (SpeechRouter.asr(preferences) == SpeechRouter.AsrRoute.FREE) {
+                    val lang = if (state.textSource.isBlank()) "zh" else state.textSource
+                    onSuccess(freeRecognizer.transcribe(wav, lang))
+                    return@launch
+                }
                 val config = settingsRepository.get(ProviderId.DOUBAO)
                 val apiKey = config.speechApiKey.trim()
                 val appId = config.speechAppId.trim()
@@ -280,16 +297,25 @@ class TranslateViewModel @Inject constructor(
         state = state.copy(translating = true, message = null, output = if (save) "" else state.output)
         viewModelScope.launch {
             try {
-                val doubao = settingsRepository.get(ProviderId.DOUBAO)
-                if (doubao.apiKey.isBlank()) error(context.getString(R.string.need_ark_key))
-                val translated = translator.translate(
-                    apiKey = doubao.apiKey,
-                    baseUrl = doubao.baseUrl,
-                    model = state.model,
-                    text = text,
-                    sourceLanguage = state.textSource,
-                    targetLanguage = state.textTarget,
-                )
+                val preferences = settingsRepository.speech()
+                val translated = if (SpeechRouter.translate(preferences) == SpeechRouter.TranslateRoute.FREE) {
+                    freeTranslator.translate(
+                        text = text,
+                        sourceLanguage = state.textSource,
+                        targetLanguage = state.textTarget,
+                    )
+                } else {
+                    val doubao = settingsRepository.get(ProviderId.DOUBAO)
+                    if (doubao.apiKey.isBlank()) error(context.getString(R.string.need_ark_key))
+                    translator.translate(
+                        apiKey = doubao.apiKey,
+                        baseUrl = doubao.baseUrl,
+                        model = state.model,
+                        text = text,
+                        sourceLanguage = state.textSource,
+                        targetLanguage = state.textTarget,
+                    )
+                }
                 lastTranslatedInput = text
                 if (save) saveTextRecord(text, translated)
                 state = state.copy(output = translated, translating = false)
@@ -341,17 +367,25 @@ class TranslateViewModel @Inject constructor(
             stopLive()
             return
         }
-        val blocked = livePairError(state.liveSourceLang, state.liveTargetLang, state.liveVoice)
-        if (blocked != null) {
-            state = state.copy(message = context.getString(blocked))
-            return
-        }
         liveJob = viewModelScope.launch {
+            val preferences = settingsRepository.speech()
+            val freeLane = SpeechRouter.live(preferences) == SpeechRouter.LiveRoute.FREE_PIPELINE
+            // 免费档的语种边界比收费档更窄，也不支持复刻原声，先校验再决定要不要建流。
+            val blocked = if (freeLane) {
+                freeLivePairError(state.liveSourceLang, state.liveTargetLang, state.liveVoice)
+            } else {
+                livePairError(state.liveSourceLang, state.liveTargetLang, state.liveVoice)
+            }
+            if (blocked != null) {
+                state = state.copy(message = context.getString(blocked))
+                return@launch
+            }
             val config = settingsRepository.get(ProviderId.DOUBAO)
             val key = config.speechApiKey.trim()
             val appId = config.speechAppId.trim()
             val accessToken = config.speechAccessToken.trim()
-            if (key.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
+            // 免费档不需要任何语音密钥；收费档仍然要。
+            if (!freeLane && key.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
                 state = state.copy(message = context.getString(R.string.need_speech_key))
                 return@launch
             }
@@ -373,15 +407,25 @@ class TranslateViewModel @Inject constructor(
             try {
                 val record = opened.await()
                 try {
-                    interpreter.interpret(
-                        apiKey = key,
-                        sourceLanguage = state.liveSourceLang,
-                        targetLanguage = state.liveTargetLang,
-                        speakerId = state.liveVoice.speakerId,
-                        audio = audio,
-                        appId = appId,
-                        accessToken = accessToken,
-                    ) { event -> applyLive(event) }
+                    if (freeLane) {
+                        freeInterpreter.interpret(
+                            sourceLanguage = state.liveSourceLang,
+                            targetLanguage = state.liveTargetLang,
+                            voice = state.liveVoice,
+                            audio = audio,
+                            isAudible = { player.isAudible() },
+                        ) { event -> applyLive(event) }
+                    } else {
+                        interpreter.interpret(
+                            apiKey = key,
+                            sourceLanguage = state.liveSourceLang,
+                            targetLanguage = state.liveTargetLang,
+                            speakerId = state.liveVoice.speakerId,
+                            audio = audio,
+                            appId = appId,
+                            accessToken = accessToken,
+                        ) { event -> applyLive(event) }
+                    }
                 } finally {
                     audio.close()
                     runCatching { record.stop() }

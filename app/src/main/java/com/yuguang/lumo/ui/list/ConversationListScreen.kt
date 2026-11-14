@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yuguang.lumo.R
+import com.yuguang.lumo.data.local.SearchHitRow
 import com.yuguang.lumo.domain.model.Conversation
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.ui.localizedSummary
@@ -155,7 +156,10 @@ fun ConversationListScreen(
                 // 搜索
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { query = it },
+                    onValueChange = {
+                        query = it
+                        viewModel.searchMessages(it)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text(stringResource(R.string.search_hint)) },
                     leadingIcon = {
@@ -195,6 +199,26 @@ fun ConversationListScreen(
                     ) { onOpenBackup() }
                 }
                 Spacer(Modifier.height(10.dp))
+            }
+
+            // 消息正文检索结果：标题命中的会话照常显示，正文命中的另起一组。
+            if (query.isNotBlank()) {
+                val hits = viewModel.hits
+                item { GroupHeader(stringResource(R.string.search_in_messages)) }
+                if (hits.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.search_no_result),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                        )
+                    }
+                } else {
+                    items(hits, key = { "hit-${it.messageId}" }) { hit ->
+                        SearchHitCard(hit = hit, onOpen = { onOpenChat(hit.conversationId) })
+                    }
+                }
             }
 
             if (conversations.isEmpty()) {
@@ -369,9 +393,39 @@ fun ConversationListScreen(
     }
 }
 
+/** 一条正文命中：会话名 + 高亮片段，点击进入该会话。 */
 @Composable
-private fun QuickAction(
-    icon: ImageVector,
+private fun SearchHitCard(hit: SearchHitRow, onOpen: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onOpen),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                hit.title.ifBlank { stringResource(R.string.new_chat) },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                hit.snippet.replace('\n', ' ').trim(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickAction(    icon: ImageVector,
     label: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,

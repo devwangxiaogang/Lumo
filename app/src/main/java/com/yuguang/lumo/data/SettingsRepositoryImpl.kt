@@ -3,6 +3,7 @@ package com.yuguang.lumo.data
 import android.content.SharedPreferences
 import com.yuguang.lumo.data.remote.EndpointUrls
 import com.yuguang.lumo.domain.SettingsRepository
+import com.yuguang.lumo.domain.model.FreeTtsBackend
 import com.yuguang.lumo.domain.model.ProviderConfig
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.SelectedModel
@@ -47,7 +48,10 @@ class SettingsRepositoryImpl @Inject constructor(
             ?.let { name -> runCatching { ProviderId.valueOf(name) }.getOrNull() }
         val model = prefs.getString(RECENT_MODEL, null)?.takeIf { it.isNotBlank() }
         if (provider != null && model != null) return SelectedModel(provider, model)
-        val configured = ProviderId.entries.firstOrNull { get(it).apiKey.isNotBlank() } ?: ProviderId.DOUBAO
+        // 没有任何密钥时默认走免费车道：装完就能聊，不让「先去申请 Key」挡住第一次使用。
+        val configured = ProviderId.entries.firstOrNull {
+            it.requiresKey && get(it).apiKey.isNotBlank()
+        } ?: ProviderId.FREE
         val config = get(configured)
         return SelectedModel(configured, config.model.ifBlank { configured.defaultModel })
     }
@@ -73,12 +77,20 @@ class SettingsRepositoryImpl @Inject constructor(
         writeSpeech(transform(speechState.value))
     }
 
+    override suspend fun memoryEnabled(): Boolean = prefs.getBoolean(MEMORY_ENABLED, false)
+
+    override suspend fun setMemoryEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(MEMORY_ENABLED, enabled).apply()
+    }
+
     private fun writeSpeech(preferences: SpeechPreferences) {
         val saved = preferences.copy(translationModel = preferences.translationModel.trim())
         speechState.value = saved
         prefs.edit()
+            .putString(TTS_TIER, saved.tier.name)
             .putString(TTS_ENGINE, saved.engine.name)
             .putString(TTS_SPEAKER, saved.speaker.name)
+            .putString(FREE_TTS_BACKEND, saved.freeTtsBackend.name)
             .putString(TRANSLATION_MODEL, saved.translationModel)
             .putString(TEXT_SOURCE, saved.textSource)
             .putString(TEXT_TARGET, saved.textTarget)
@@ -126,8 +138,10 @@ class SettingsRepositoryImpl @Inject constructor(
         val defaults = SpeechPreferences()
         return runCatching {
             SpeechPreferences(
+                tier = enumOr(prefs.getString(TTS_TIER, null), defaults.tier),
                 engine = enumOr(prefs.getString(TTS_ENGINE, null), defaults.engine),
                 speaker = enumOr(prefs.getString(TTS_SPEAKER, null), defaults.speaker).readingVoice(),
+                freeTtsBackend = enumOr(prefs.getString(FREE_TTS_BACKEND, null), defaults.freeTtsBackend),
                 translationModel = prefs.getString(TRANSLATION_MODEL, null)?.takeIf { it.isNotBlank() }
                     ?: defaults.translationModel,
                 textSource = prefs.getString(TEXT_SOURCE, null) ?: defaults.textSource,
@@ -157,13 +171,16 @@ class SettingsRepositoryImpl @Inject constructor(
     private companion object {
         const val RECENT_PROVIDER = "recentProvider"
         const val RECENT_MODEL = "recentModel"
+        const val TTS_TIER = "ttsTier"
         const val TTS_ENGINE = "ttsEngine"
         const val TTS_SPEAKER = "ttsSpeaker"
+        const val FREE_TTS_BACKEND = "freeTtsBackend"
         const val TRANSLATION_MODEL = "translationModel"
         const val TEXT_SOURCE = "textSourceLang"
         const val TEXT_TARGET = "textTargetLang"
         const val LIVE_SOURCE = "liveSourceLang"
         const val LIVE_TARGET = "liveTargetLang"
         const val LIVE_VOICE = "liveVoice"
+        const val MEMORY_ENABLED = "memoryEnabled"
     }
 }

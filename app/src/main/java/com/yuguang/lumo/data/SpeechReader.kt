@@ -10,9 +10,10 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.remote.DoubaoTtsClient
+import com.yuguang.lumo.data.remote.free.FreeTtsClient
 import com.yuguang.lumo.domain.SettingsRepository
 import com.yuguang.lumo.domain.model.ProviderId
-import com.yuguang.lumo.domain.model.TtsEngine
+import com.yuguang.lumo.domain.model.SpeechPreferences
 import com.yuguang.lumo.domain.model.VoiceChoice
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -41,6 +42,7 @@ class SpeechReader @Inject constructor(
     @ApplicationContext context: Context,
     private val settingsRepository: SettingsRepository,
     private val ttsClient: DoubaoTtsClient,
+    private val freeTts: FreeTtsClient,
 ) {
     private val context = context
     private val local = LocalSpeaker(context)
@@ -54,6 +56,7 @@ class SpeechReader @Inject constructor(
         key: String,
         text: String,
         forceLocal: Boolean = false,
+        lang: String = "",
         onFailure: (SpeakFailure) -> Unit = {},
     ) {
         if (speakingState.value == key) {
@@ -68,19 +71,20 @@ class SpeechReader @Inject constructor(
             speakingState.value = key
             try {
                 val preferences = settingsRepository.speech()
-                val useLocal = forceLocal || preferences.engine == TtsEngine.LOCAL
-                if (useLocal) {
-                    local.speak(content)
-                } else {
-                    val config = settingsRepository.get(ProviderId.DOUBAO)
-                    val apiKey = config.speechApiKey.trim()
-                    val appId = config.speechAppId.trim()
-                    val accessToken = config.speechAccessToken.trim()
-                    if (apiKey.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
-                        onFailure(SpeakFailure(context.getString(R.string.need_speech_key_or_local), canUseLocal = true))
-                        return@launch
+                when (SpeechRouter.tts(preferences, forceLocal)) {
+                    SpeechRouter.TtsRoute.LOCAL -> local.speak(content)
+                    SpeechRouter.TtsRoute.FREE_CLOUD -> playFree(preferences, content, lang)
+                    SpeechRouter.TtsRoute.DOUBAO -> {
+                        val config = settingsRepository.get(ProviderId.DOUBAO)
+                        val apiKey = config.speechApiKey.trim()
+                        val appId = config.speechAppId.trim()
+                        val accessToken = config.speechAccessToken.trim()
+                        if (apiKey.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
+                            onFailure(SpeakFailure(context.getString(R.string.need_speech_key_or_local), canUseLocal = true))
+                            return@launch
+                        }
+                        playDoubao(apiKey, appId, accessToken, preferences.speaker, content)
                     }
-                    playDoubao(apiKey, appId, accessToken, preferences.speaker, content)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -143,6 +147,34 @@ class SpeechReader @Inject constructor(
         }
     }
 
+    /**
+     * 免费朗读：公开端点返回 MP3，本地解码成 PCM 再播放。
+     *
+     * 采样率以解码结果为准（实测 16 kHz），不能复用豆包的 24 kHz。
+     * 任何一步失败都退回本机 TTS，并把原因交给调用方提示。
+     */
+    private suspend fun playFree(
+        preferences: SpeechPreferences,
+        text: String,
+        lang: String,
+    ) {
+        val voice = if (preferences.speaker == VoiceChoice.CLONE) VoiceChoice.FEMALE else preferences.speaker
+        val speech = freeTts.synthesize(
+            text = text,
+            lang = lang.ifBlank { "zh" },
+            speed = 0,
+            voice = voice,
+            backend = preferences.freeTtsBackend,
+        ) ?: run {
+            local.speak(text)
+            return
+        }
+        val playback = PcmPlayer(speech.sampleRate)
+        synchronized(this) { player = playback }
+        playback.start()
+        playback.write(speech.pcm)
+    }
+
     private fun speechChunks(text: String, limit: Int): List<String> {
         if (text.length <= limit) return listOf(text)
         val parts = mutableListOf<String>()
@@ -161,8 +193,7 @@ class SpeechReader @Inject constructor(
         return parts.filter { it.isNotBlank() }
     }
 
-    private class PcmPlayer(sampleRate: Int) {
-        private val lock = Any()
+    private class PcmPlayer(sampleRate: Int) {        private val lock = Any()
         private var closed = false
         private val track = AudioTrack.Builder()
             .setAudioAttributes(

@@ -47,6 +47,7 @@ fun SettingsHomeScreen(
     onOpenVoicePrefs: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenData: () -> Unit,
+    onOpenMemory: () -> Unit,
     onOpenAbout: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
     appearance: AppearanceViewModel = hiltViewModel(),
@@ -100,6 +101,22 @@ fun SettingsHomeScreen(
                         onClick = { onOpenProvider(ProviderId.DOUBAO) },
                     )
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                // 免费车道单独一行：不需要 Key，状态显示可用模型数。
+                configs?.get(ProviderId.FREE)?.let { _ ->
+                    val freeCount = viewModel.catalogs.value[ProviderId.FREE]?.size ?: 0
+                    SettingsRow(
+                        title = stringResource(ProviderId.FREE.nameRes),
+                        subtitle = stringResource(R.string.free_no_key_needed),
+                        value = if (freeCount > 0) {
+                            stringResource(R.string.free_models_available, freeCount)
+                        } else {
+                            stringResource(R.string.settings_status_ready)
+                        },
+                        valueColor = statusColor(true),
+                        onClick = { onOpenProvider(ProviderId.FREE) },
+                    )
+                }
             }
             val speech = viewModel.speech
             SettingsGroup(stringResource(R.string.settings_section_voice)) {
@@ -134,6 +151,17 @@ fun SettingsHomeScreen(
                 )
             }
             SettingsGroup(stringResource(R.string.settings_section_data)) {
+                SettingsRow(
+                    title = stringResource(R.string.memory_title),
+                    subtitle = stringResource(R.string.memory_enable_note),
+                    value = stringResource(
+                        if (viewModel.memoryOn) R.string.settings_status_configured
+                        else R.string.settings_status_missing,
+                    ),
+                    valueColor = statusColor(viewModel.memoryOn),
+                    onClick = onOpenMemory,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 SettingsRow(
                     title = stringResource(R.string.backup_title),
                     subtitle = stringResource(R.string.settings_backup_subtitle),

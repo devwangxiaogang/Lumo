@@ -2,14 +2,19 @@ package com.yuguang.lumo.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -20,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,11 +51,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 import com.yuguang.lumo.R
+import com.yuguang.lumo.domain.model.FreeTtsBackend
 import com.yuguang.lumo.domain.model.ProviderId
+import com.yuguang.lumo.domain.model.SpeechTier
 import com.yuguang.lumo.domain.model.TtsEngine
 import com.yuguang.lumo.domain.model.VoiceChoice
 import com.yuguang.lumo.ui.localizedModel
 import com.yuguang.lumo.ui.model.ModelPickerDialog
+import com.yuguang.lumo.ui.components.TierBadge
 
 /** 单个服务商的接入信息与默认模型。 */
 @Composable
@@ -82,6 +92,53 @@ fun ProviderSettingsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (!provider.requiresKey) {
+                // 免密钥车道：说明来源与限制，并把「刷新目录」放最前。
+                SettingsGroup(stringResource(R.string.free_section_title)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.free_no_key_needed),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        if (provider == ProviderId.FREE) {
+                            Text(
+                                stringResource(R.string.free_train_notice),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.custom_endpoint_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Button(
+                            onClick = viewModel::refreshModels,
+                            enabled = !viewModel.refreshing,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (viewModel.refreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.padding(end = 8.dp).size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                            Text(stringResource(R.string.refresh_models))
+                        }
+                        if (provider == ProviderId.CUSTOM) {
+                            Button(
+                                onClick = { viewModel.testConnection(provider) },
+                                enabled = config.baseUrl.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(stringResource(R.string.test_connection)) }
+                        }
+                    }
+                }
+            }
             SettingsGroup(stringResource(R.string.settings_provider_default_model)) {
                 SettingsRow(
                     title = stringResource(R.string.default_model_label),
@@ -98,7 +155,13 @@ fun ProviderSettingsScreen(
                         value = config.apiKey,
                         onValueChange = { viewModel.update(config.copy(apiKey = it)) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.api_key)) },
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (provider.requiresKey) R.string.api_key else R.string.api_key_optional,
+                                ),
+                            )
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
@@ -115,13 +178,13 @@ fun ProviderSettingsScreen(
                             singleLine = true,
                         )
                     }
+                    Button(
+                        onClick = { viewModel.save(provider) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.save_provider, stringResource(provider.nameRes)))
+                    }
                 }
-            }
-            Button(
-                onClick = { viewModel.save(provider) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.save_provider, stringResource(provider.nameRes)))
             }
             Text(
                 stringResource(R.string.settings_about_note),
@@ -149,10 +212,64 @@ fun ProviderSettingsScreen(
     }
 }
 
+/**
+ * 档位选择卡：收费（豆包）与免费链路在这里二选一。
+ *
+ * 免费卡用 tertiary 色描边 + 「免费」胶囊，和收费卡一眼就能分开；
+ * 选中态同时用背景色与描边双重区分，不依赖单一颜色。
+ */
+@Composable
+private fun TierCard(
+    tier: SpeechTier,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val accent = if (tier.free) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+    val container = when {
+        selected && tier.free -> MaterialTheme.colorScheme.tertiaryContainer
+        selected -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surface
+    }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = container,
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) accent else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(tier.labelRes),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = accent,
+                )
+                if (tier.free) {
+                    Spacer(Modifier.width(6.dp))
+                    TierBadge(tier = tier)
+                }
+            }
+            Text(
+                stringResource(
+                    if (tier.free) R.string.tier_free_subtitle else R.string.tier_paid_subtitle,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 /** 朗读引擎、音色与实时语音凭证。 */
 @Composable
-fun VoicePrefsScreen(
-    onBack: () -> Unit,
+fun VoicePrefsScreen(    onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val snackbar = remember { SnackbarHostState() }
@@ -173,13 +290,48 @@ fun VoicePrefsScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // 档位卡放在最前：这是「收费 / 免费」两套链路的唯一开关。
+            SettingsGroup(stringResource(R.string.free_section_title)) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    SpeechTier.entries.forEach { tier ->
+                        TierCard(
+                            tier = tier,
+                            selected = speech.tier == tier,
+                            onClick = { viewModel.setTier(tier) },
+                        )
+                    }
+                    if (speech.tier == SpeechTier.FREE) {
+                        Text(
+                            stringResource(R.string.tier_free_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            stringResource(R.string.free_backend_label),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FreeTtsBackend.entries.forEach { backend ->
+                                FilterChip(
+                                    selected = speech.freeTtsBackend == backend,
+                                    onClick = { viewModel.setFreeTtsBackend(backend) },
+                                    label = { Text(stringResource(backend.labelRes)) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             SettingsGroup(stringResource(R.string.settings_voice_reading)) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(stringResource(R.string.settings_voice_engine), style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         TtsEngine.entries.forEach { engine ->
                             FilterChip(
                                 selected = speech.engine == engine,
@@ -188,7 +340,7 @@ fun VoicePrefsScreen(
                             )
                         }
                     }
-                    if (speech.engine == TtsEngine.DOUBAO) {
+                    if (speech.engine == TtsEngine.DOUBAO && speech.tier == SpeechTier.PAID) {
                         Text(stringResource(R.string.settings_voice_speaker), style = MaterialTheme.typography.labelLarge)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf(VoiceChoice.FEMALE, VoiceChoice.MALE).forEach { voice ->
@@ -202,58 +354,125 @@ fun VoicePrefsScreen(
                     }
                 }
             }
-            SettingsGroup(stringResource(R.string.settings_realtime_voice)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.settings_realtime_keys_help),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (config == null) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        OutlinedTextField(
-                            value = config.speechApiKey,
-                            onValueChange = { viewModel.update(config.copy(speechApiKey = it)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.speech_api_key)) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            singleLine = true,
-                            supportingText = { Text(stringResource(R.string.speech_api_key_help)) },
+            if (speech.tier == SpeechTier.PAID) {
+                SettingsGroup(stringResource(R.string.settings_realtime_voice)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.settings_realtime_keys_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedTextField(
-                            value = config.speechAppId,
-                            onValueChange = { viewModel.update(config.copy(speechAppId = it)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.speech_app_id)) },
-                            singleLine = true,
-                        )
-                        OutlinedTextField(
-                            value = config.speechAccessToken,
-                            onValueChange = { viewModel.update(config.copy(speechAccessToken = it)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.speech_access_token)) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            singleLine = true,
-                            supportingText = { Text(stringResource(R.string.speech_legacy_help)) },
-                        )
-                        Button(onClick = { viewModel.save(ProviderId.DOUBAO) }, modifier = Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.save_provider, stringResource(ProviderId.DOUBAO.nameRes)))
+                        if (config == null) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            OutlinedTextField(
+                                value = config.speechApiKey,
+                                onValueChange = { viewModel.update(config.copy(speechApiKey = it)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(R.string.speech_api_key)) },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                singleLine = true,
+                                supportingText = { Text(stringResource(R.string.speech_api_key_help)) },
+                            )
+                            OutlinedTextField(
+                                value = config.speechAppId,
+                                onValueChange = { viewModel.update(config.copy(speechAppId = it)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(R.string.speech_app_id)) },
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                value = config.speechAccessToken,
+                                onValueChange = { viewModel.update(config.copy(speechAccessToken = it)) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(stringResource(R.string.speech_access_token)) },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                singleLine = true,
+                                supportingText = { Text(stringResource(R.string.speech_legacy_help)) },
+                            )
+                            Button(
+                                onClick = { viewModel.save(ProviderId.DOUBAO) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.save_provider, stringResource(ProviderId.DOUBAO.nameRes)))
+                            }
+                        }
+                        Text(stringResource(R.string.settings_live_voice), style = MaterialTheme.typography.labelLarge)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            VoiceChoice.entries.forEach { voice ->
+                                FilterChip(
+                                    selected = speech.liveVoice == voice,
+                                    onClick = { viewModel.setLiveVoice(voice) },
+                                    label = { Text(stringResource(voice.labelRes)) },
+                                )
+                            }
                         }
                     }
-                    Text(stringResource(R.string.settings_live_voice), style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        VoiceChoice.entries.forEach { voice ->
-                            FilterChip(
-                                selected = speech.liveVoice == voice,
-                                onClick = { viewModel.setLiveVoice(voice) },
-                                label = { Text(stringResource(voice.labelRes)) },
+                }
+            } else {
+                // 免费档没有密钥可填：说明能力边界，并给一个一键自检。
+                SettingsGroup(stringResource(R.string.free_section_title)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.free_no_key_needed),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            stringResource(R.string.free_voice_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            stringResource(R.string.free_asr_experimental),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = viewModel::runSelfTest,
+                            enabled = !viewModel.selfTesting,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (viewModel.selfTesting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.padding(end = 8.dp).size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
+                            Text(
+                                stringResource(
+                                    if (viewModel.selfTesting) R.string.free_self_test_running
+                                    else R.string.free_self_test,
+                                ),
                             )
+                        }
+                        viewModel.selfTestResults.forEach { item ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    if (item.ok) "✓" else "✕",
+                                    color = statusColor(item.ok),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    item.detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (item.ok) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -392,11 +611,116 @@ fun DataSettingsScreen(
     }
 }
 
+/** 长期记忆：总开关 + 条目列表。默认关闭。 */
+@Composable
+fun MemoryScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
+    var draft by remember { mutableStateOf("") }
+    SettingPageScaffold(
+        title = stringResource(R.string.memory_title),
+        onBack = onBack,
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SettingsGroup(stringResource(R.string.memory_title)) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.memory_enable), style = MaterialTheme.typography.bodyLarge)
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = viewModel.memoryOn,
+                            onCheckedChange = { viewModel.setMemoryEnabled(it) },
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.memory_enable_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (viewModel.memoryOn) {
+                SettingsGroup(stringResource(R.string.memory_add)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text(stringResource(R.string.memory_add_hint)) },
+                            singleLine = true,
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.addMemory(draft)
+                                draft = ""
+                            },
+                            enabled = draft.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.memory_add)) }
+                    }
+                }
+                val memories = viewModel.memories
+                if (memories.isEmpty()) {
+                    Text(
+                        stringResource(R.string.memory_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                } else {
+                    SettingsGroup(stringResource(R.string.memory_title)) {
+                        memories.forEachIndexed { index, memory ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(memory.content, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                androidx.compose.material3.Switch(
+                                    checked = memory.enabled,
+                                    onCheckedChange = { viewModel.toggleMemory(memory.id, it) },
+                                )
+                                TextButton(onClick = { viewModel.deleteMemory(memory.id) }) {
+                                    Text(stringResource(R.string.delete))
+                                }
+                            }
+                            if (index < memories.lastIndex) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
-) {
-    SettingPageScaffold(
+) {    SettingPageScaffold(
         title = stringResource(R.string.settings_section_about),
         onBack = onBack,
     ) { padding ->
@@ -408,7 +732,7 @@ fun AboutScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SettingsGroup(stringResource(R.string.settings_section_about)) {
-                SettingsRow(title = stringResource(R.string.settings_version), value = "1.0.0")
+                SettingsRow(title = stringResource(R.string.settings_version), value = "1.1.0")
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 SettingsRow(
                     title = stringResource(R.string.settings_about_security),

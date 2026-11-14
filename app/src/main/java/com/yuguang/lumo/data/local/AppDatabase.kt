@@ -10,8 +10,10 @@ import androidx.room.RoomDatabase
         MessageEntity::class,
         AttachmentEntity::class,
         TranslationEntity::class,
+        MessageFts::class,
+        MemoryEntity::class,
     ],
-    version = 4,
+    version = 5,
     // 导出 schema 到 app/schemas，迁移才能被 room-testing 验证。
     exportSchema = true,
 )
@@ -23,4 +25,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
 
     abstract fun translationDao(): TranslationDao
+
+    abstract fun searchDao(): SearchDao
+
+    abstract fun memoryDao(): MemoryDao
 }

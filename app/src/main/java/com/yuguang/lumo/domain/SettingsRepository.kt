@@ -27,4 +27,9 @@ interface SettingsRepository {
 
     /** 连续点选语言或音色时，在同一把锁里读改写，避免后一次覆盖前一次。 */
     suspend fun editSpeech(transform: (SpeechPreferences) -> SpeechPreferences)
+
+    /** 长期记忆总开关。默认关闭：开启意味着把对话内容发给模型提炼。 */
+    suspend fun memoryEnabled(): Boolean
+
+    suspend fun setMemoryEnabled(enabled: Boolean)
 }

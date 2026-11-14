@@ -15,6 +15,7 @@ import com.yuguang.lumo.data.local.MessageEntity
 import com.yuguang.lumo.data.remote.DoubaoProvider
 import com.yuguang.lumo.data.remote.SeedreamClient
 import com.yuguang.lumo.di.AppScope
+import com.yuguang.lumo.domain.ChatDraft
 import com.yuguang.lumo.domain.ChatRepository
 import com.yuguang.lumo.domain.LlmProvider
 import com.yuguang.lumo.domain.ModelCatalogRepository
@@ -31,6 +32,7 @@ import com.yuguang.lumo.domain.model.Role
 import com.yuguang.lumo.domain.model.StreamEvent
 import com.yuguang.lumo.domain.model.ToolCallRequest
 import com.yuguang.lumo.domain.model.WireMessage
+import com.yuguang.lumo.domain.model.freeFallbackChain
 import com.yuguang.lumo.domain.model.historyStartIndex
 import com.yuguang.lumo.domain.model.overlayStreaming
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -64,6 +66,8 @@ class ChatRepositoryImpl @Inject constructor(
     private val modelCatalog: ModelCatalogRepository,
     private val providers: Map<ProviderId, @JvmSuppressWildcards LlmProvider>,
     private val settingsRepository: SettingsRepository,
+    private val memoryStore: MemoryStore,
+    private val toolRegistry: ToolRegistry,
     private val json: Json,
     @AppScope private val appScope: CoroutineScope,
 ) : ChatRepository {
@@ -72,6 +76,9 @@ class ChatRepositoryImpl @Inject constructor(
 
     /** 正在生成中的正文只留在内存里，避免每个 token 都写一次数据库。 */
     private val streaming = MutableStateFlow<Map<Long, StreamingText>>(emptyMap())
+
+    /** 分享进来但还没发送的草稿；进程重启即丢弃。 */
+    private val drafts = ConcurrentHashMap<Long, ChatDraft>()
 
     override fun observeConversations(): Flow<List<Conversation>> =
         conversationDao.observeSummaries().map { rows -> rows.map { it.toDomain() } }
@@ -141,6 +148,30 @@ class ChatRepositoryImpl @Inject constructor(
         conversationDao.setPinned(id, pinned)
     }
 
+    override suspend fun setThinking(id: Long, thinking: Boolean) {
+        conversationDao.setThinking(id, thinking)
+    }
+
+    /**
+     * 分享文本落成草稿。
+     *
+     * 草稿不进 messages 表：它还没被发送，塞进历史会让模型以为用户已经说过这句话。
+     * 因此草稿存在会话的 title 之外的一个内存表里，由 ChatViewModel 首次读取。
+     */
+    override suspend fun setDraft(conversationId: Long, text: String) {
+        drafts[conversationId] = ChatDraft(text = text, uris = drafts[conversationId]?.uris.orEmpty())
+    }
+
+    override suspend fun setDraftImages(conversationId: Long, uris: List<Uri>) {
+        val imported = uris.mapNotNull { mediaStore.importUserImage(it) }
+        drafts[conversationId] = ChatDraft(
+            text = drafts[conversationId]?.text.orEmpty(),
+            uris = imported.map { Uri.fromFile(java.io.File(it.path)) },
+        )
+    }
+
+    override fun takeDraft(conversationId: Long): ChatDraft? = drafts.remove(conversationId)
+
     override suspend fun renameConversation(id: Long, title: String) {
         val clean = title.trim()
         if (clean.isNotEmpty()) conversationDao.rename(id, clean)
@@ -171,6 +202,7 @@ class ChatRepositoryImpl @Inject constructor(
         val shouldDraw = drawMode
         if (shouldDraw) {
             val doubao = settingsRepository.get(ProviderId.DOUBAO)
+            // 生图只有豆包 Seedream：免费档与未填 Key 都给出明确说明。
             if (doubao.apiKey.isBlank()) return context.getString(R.string.need_doubao_for_draw)
         } else {
             val rejected = rejectIfBusyOrMissingKey(conversationId, provider, config)
@@ -262,7 +294,8 @@ class ChatRepositoryImpl @Inject constructor(
         config: ProviderConfig,
     ): String? {
         if (jobs[conversationId]?.isActive == true) return context.getString(R.string.generating)
-        if (config.apiKey.isBlank()) {
+        // 免密钥车道（免费池 / 自定义端点）不校验 Key，也不再拦截发送。
+        if (config.apiKey.isBlank() && provider.requiresKey) {
             return context.getString(R.string.need_provider_key, context.getString(provider.nameRes))
         }
         return null
@@ -363,67 +396,145 @@ class ChatRepositoryImpl @Inject constructor(
             val enableTool = provider == ProviderId.DOUBAO && doubaoKeyReady
             val llm = providers[provider]
                 ?: error(context.getString(R.string.provider_missing, context.getString(provider.nameRes)))
+            // 本地工具只在收费车道声明：免费池的工具调用兼容性参差，
+            // 且免费档的定位是「能聊」，不追加重试轮次。
+            val toolSchemas = if (provider.requiresKey) {
+                toolRegistry.specs().map { spec ->
+                    com.yuguang.lumo.data.remote.toolSchemaOf(spec.name, spec.description, spec.parameters)
+                }
+            } else {
+                emptyList()
+            }
             var lastFlush = 0L
             var lastStream = 0L
             var pendingTools: List<ToolCallRequest> = emptyList()
-            llm.stream(
-                apiKey = config.apiKey,
-                baseUrl = config.baseUrl,
-                request = ChatRequest(model = model, messages = messages, enableImageTool = enableTool),
-            ).collect { event ->
-                when (event) {
-                    is StreamEvent.Delta -> {
-                        content += event.text
-                        lastStream = publishStreaming(
-                            conversationId = conversation.id,
-                            messageId = assistantId,
-                            content = content,
-                            reasoning = reasoning,
-                            lastPublish = lastStream,
-                        )
-                        lastFlush = flush(assistantId, content, reasoning, lastFlush, force = false)
-                    }
-                    is StreamEvent.Reasoning -> {
-                        reasoning += event.text
-                        lastStream = publishStreaming(
-                            conversationId = conversation.id,
-                            messageId = assistantId,
-                            content = content,
-                            reasoning = reasoning,
-                            lastPublish = lastStream,
-                        )
-                        lastFlush = flush(assistantId, content, reasoning, lastFlush, force = false)
-                    }
-                    is StreamEvent.ToolCalls -> pendingTools = event.calls
-                    is StreamEvent.Completed -> {
-                        if (pendingTools.isNotEmpty()) {
-                            handleImageTools(assistantId, conversation, pendingTools, content)
+            // 一轮对话最多允许三轮工具调用，防止模型自己绕圈。
+            val working = messages.toMutableList()
+            var round = 0
+            while (true) {
+                val trace = StringBuilder()
+                var roundContent = ""
+                var roundReasoning = ""
+                var completed = false
+                var failed: String? = null
+                var usagePrompt = 0
+                var usageCompletion = 0
+                llm.stream(
+                    apiKey = config.apiKey,
+                    baseUrl = config.baseUrl,
+                    request = ChatRequest(
+                        model = model,
+                        messages = working.toList(),
+                        enableImageTool = enableTool,
+                        thinking = conversation.thinking,
+                        fallbackModels = if (provider == ProviderId.FREE) {
+                            freeFallbackChain.filter { it != model }
                         } else {
-                            messageDao.updateBody(assistantId, content, reasoning, MessageStatus.DONE.name, "")
+                            emptyList()
+                        },
+                        maxOutputTokens = if (provider == ProviderId.FREE) FREE_MAX_OUTPUT else 0,
+                        toolSchemas = toolSchemas,
+                    ),
+                ).collect { event ->
+                    when (event) {
+                        is StreamEvent.Delta -> {
+                            roundContent += event.text
+                            content = if (round == 0) roundContent else content + roundContent
+                            lastStream = publishStreaming(
+                                conversationId = conversation.id,
+                                messageId = assistantId,
+                                content = content,
+                                reasoning = reasoning,
+                                lastPublish = lastStream,
+                            )
+                            lastFlush = flush(assistantId, content, reasoning, lastFlush, force = false)
                         }
-                        settingsRepository.rememberRecent(provider, model)
-                        terminal = true
-                    }
-                    is StreamEvent.Failed -> {
-                        messageDao.updateBody(
-                            assistantId,
-                            content,
-                            reasoning,
-                            MessageStatus.FAILED.name,
-                            event.message,
-                        )
-                        terminal = true
+                        is StreamEvent.Reasoning -> {
+                            roundReasoning += event.text
+                            reasoning += event.text
+                            lastStream = publishStreaming(
+                                conversationId = conversation.id,
+                                messageId = assistantId,
+                                content = content,
+                                reasoning = reasoning,
+                                lastPublish = lastStream,
+                            )
+                            lastFlush = flush(assistantId, content, reasoning, lastFlush, force = false)
+                        }
+                        is StreamEvent.ToolCalls -> pendingTools = event.calls
+                        is StreamEvent.Completed -> {
+                            usagePrompt += event.promptTokens ?: 0
+                            usageCompletion += event.completionTokens ?: 0
+                            completed = true
+                        }
+                        is StreamEvent.Failed -> failed = event.message
                     }
                 }
-            }
-            if (!terminal) {
-                if (pendingTools.isNotEmpty()) {
-                    handleImageTools(assistantId, conversation, pendingTools, content)
-                } else {
-                    messageDao.updateBody(assistantId, content, reasoning, MessageStatus.DONE.name, "")
+                if (failed != null) {
+                    messageDao.updateBody(
+                        assistantId,
+                        content,
+                        reasoning,
+                        MessageStatus.FAILED.name,
+                        failed,
+                    )
+                    terminal = true
+                    break
                 }
-                settingsRepository.rememberRecent(provider, model)
-                terminal = true
+                if (!completed) break
+
+                // 生图工具仍走豆包 Seedream 的独立分支。
+                val imageCall = pendingTools.firstOrNull { call ->
+                    call.name.equals(DoubaoProvider.GENERATE_IMAGE_TOOL, ignoreCase = true)
+                }
+                if (imageCall != null) {
+                    val body = content.ifBlank {
+                        if (reasoning.isNotBlank()) context.getString(R.string.thinking_only_reply) else ""
+                    }
+                    handleImageTools(assistantId, conversation, pendingTools, body)
+                    messageDao.updateUsage(assistantId, usagePrompt, usageCompletion)
+                    settingsRepository.rememberRecent(provider, model)
+                    scheduleMemoryExtraction(conversation, provider, model)
+                    terminal = true
+                    break
+                }
+
+                val executable = pendingTools.filter { toolRegistry.spec(it.name) != null }
+                if (executable.isEmpty() || round >= MAX_TOOL_ROUNDS) {
+                    val body = content.ifBlank {
+                        if (reasoning.isNotBlank()) context.getString(R.string.thinking_only_reply) else ""
+                    }
+                    messageDao.updateBody(assistantId, body, reasoning, MessageStatus.DONE.name, "")
+                    messageDao.updateToolTrace(assistantId, trace.toString())
+                    messageDao.updateUsage(assistantId, usagePrompt, usageCompletion)
+                    settingsRepository.rememberRecent(provider, model)
+                    scheduleMemoryExtraction(conversation, provider, model)
+                    terminal = true
+                    break
+                }
+
+                // 把这一轮的助手回复与工具结果追加进历史，再请求下一轮。
+                working += WireMessage(Role.ASSISTANT, roundContent, toolCalls = executable)
+                executable.forEach { call ->
+                    val result = toolRegistry.execute(call.name, call.argumentsJson)
+                    working += WireMessage(
+                        Role.TOOL,
+                        result,
+                        toolCallId = call.id,
+                        toolName = call.name,
+                    )
+                    trace.append(call.name).append(" -> ")
+                        .append(result.replace('\n', ' ').take(200)).append('\n')
+                }
+                messageDao.updateBody(
+                    assistantId,
+                    content,
+                    reasoning,
+                    MessageStatus.STREAMING.name,
+                    "",
+                )
+                pendingTools = emptyList()
+                round++
             }
         } catch (cancelled: CancellationException) {
             finishCancelled(assistantId, content, reasoning, terminal)
@@ -441,6 +552,27 @@ class ChatRepositoryImpl @Inject constructor(
         } finally {
             // 收尾后以数据库为准；这里只清理内存里的流式副本。
             streaming.update { it - conversation.id }
+        }
+    }
+
+    /**
+     * 异步提炼长期记忆。
+     *
+     * 只在记忆开启且本轮有用户消息时触发；用当前会话模型，失败静默。
+     */
+    private fun scheduleMemoryExtraction(
+        conversation: ConversationEntity,
+        provider: ProviderId,
+        model: String,
+    ) {
+        appScope.launch {
+            runCatching {
+                if (!settingsRepository.memoryEnabled()) return@runCatching
+                val recent = messageDao.recentDone(conversation.id, MEMORY_SOURCE_TURNS).asReversed()
+                if (recent.none { it.role == Role.USER.name }) return@runCatching
+                val transcript = recent.map { WireMessage(Role.valueOf(it.role), it.content) }
+                memoryStore.extract(conversation.id, provider, model, transcript)
+            }
         }
     }
 
@@ -619,9 +751,14 @@ class ChatRepositoryImpl @Inject constructor(
         }
         var imagesLeft = IMAGE_HISTORY_LIMIT
         var imageCharsLeft = IMAGE_HISTORY_CHARS
+        // 长期记忆：作为额外 system 消息插在人设之后，预算独立，不挤占对话历史。
+        val memoryBlock = memoryStore.promptBlock()
         return buildList {
             if (conversation.systemPrompt.isNotBlank()) {
                 add(WireMessage(Role.SYSTEM, conversation.systemPrompt))
+            }
+            if (memoryBlock.isNotBlank()) {
+                add(WireMessage(Role.SYSTEM, memoryBlock))
             }
             window.forEach { row ->
                 val role = Role.valueOf(row.role)
@@ -710,6 +847,7 @@ class ChatRepositoryImpl @Inject constructor(
         model = model,
         systemPrompt = systemPrompt,
         updatedAt = updatedAt,
+        thinking = thinking,
     )
 
     private fun ConversationSummaryRow.toDomain(): Conversation = Conversation(
@@ -720,7 +858,9 @@ class ChatRepositoryImpl @Inject constructor(
         systemPrompt = systemPrompt,
         updatedAt = updatedAt,
         pinned = pinned,
+        thinking = thinking,
         preview = preview?.trim()?.replace('\n', ' ')?.take(120),
+        totalTokens = totalTokens,
     )
 
     private fun MessageEntity.toDomain(attachments: List<MessageAttachment> = emptyList()): ChatMessage =
@@ -734,6 +874,9 @@ class ChatRepositoryImpl @Inject constructor(
             error = error.removePrefix(DRAW_ERROR_PREFIX),
             createdAt = createdAt,
             attachments = attachments,
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            toolTrace = toolTrace,
         )
 
     private fun AttachmentEntity.toDomain(): MessageAttachment = MessageAttachment(
@@ -748,11 +891,17 @@ class ChatRepositoryImpl @Inject constructor(
 
     companion object {
         const val DRAW_ERROR_PREFIX = "__draw__:"
+        /** 免费车道的单轮输出上限：思考与正文共享，压太低会只出思考。 */
+        private const val FREE_MAX_OUTPUT = 4_096
         /** 先按条数粗取，再交给 [historyStartIndex] 按字符预算裁剪。 */
         private const val HISTORY_FETCH_LIMIT = 40
         private const val HISTORY_MAX_MESSAGES = 24
         private const val HISTORY_MAX_CHARS = 12_000
         private const val IMAGE_HISTORY_LIMIT = 4
+        /** 提炼记忆时回看的消息条数。 */
+        private const val MEMORY_SOURCE_TURNS = 8
+        /** 一轮对话最多允许的工具调用轮次。 */
+        private const val MAX_TOOL_ROUNDS = 3
         /** 历史附图 base64 后的总字符预算（约 4.5 MB 原始数据）。 */
         private const val IMAGE_HISTORY_CHARS = 6_000_000L
         /** 数据库兜底落盘间隔：正文平时只在内存里，进程被杀最多回退这么多内容。 */

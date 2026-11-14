@@ -47,6 +47,7 @@ class ModelCatalogRepositoryImpl @Inject constructor(
         return provider.staticSupportsVision(modelId)
     }
 
+    /** 免费车道的首选生图模型不存在，返回豆包的（免费档不提供生图）。 */
     override fun preferredImageGenModel(): String {
         val fromRemote = cache.value[ProviderId.DOUBAO]
             ?.filter { it.imageGen }
@@ -62,8 +63,10 @@ class ModelCatalogRepositoryImpl @Inject constructor(
     override suspend fun refreshAll(): String? {
         var lastError: String? = null
         ProviderId.entries.forEach { provider ->
+            if (provider == ProviderId.CUSTOM) return@forEach
             val config = settingsRepository.get(provider)
-            if (config.apiKey.isBlank()) return@forEach
+            // 免密钥车道（免费池）没有 Key 也要拉目录；其余车道缺 Key 时跳过。
+            if (config.apiKey.isBlank() && provider.requiresKey) return@forEach
             val error = refresh(provider)
             if (error != null) lastError = error
         }
@@ -80,8 +83,11 @@ class ModelCatalogRepositoryImpl @Inject constructor(
 
     private suspend fun refreshLocked(provider: ProviderId): String? {
         val config = settingsRepository.get(provider)
-        if (config.apiKey.isBlank()) {
+        if (config.apiKey.isBlank() && provider.requiresKey) {
             return context.getString(R.string.need_provider_key, context.getString(provider.nameRes))
+        }
+        if (provider == ProviderId.CUSTOM && config.baseUrl.isBlank()) {
+            return context.getString(R.string.custom_endpoint_missing)
         }
         return try {
             val models = client.fetch(provider, config.apiKey, config.baseUrl)
@@ -115,6 +121,9 @@ class ModelCatalogRepositoryImpl @Inject constructor(
                     vision = dto.vision,
                     imageGen = dto.imageGen,
                     groupRes = ModelGroup.fromKey(dto.groupKey).labelRes,
+                    contextWindow = dto.contextWindow,
+                    maxOutput = dto.maxOutput,
+                    reasoning = dto.reasoning,
                 )
             }
         }.toMap()
@@ -133,6 +142,9 @@ class ModelCatalogRepositoryImpl @Inject constructor(
                             vision = it.vision,
                             imageGen = it.imageGen,
                             groupKey = ModelGroup.fromLabelRes(it.groupRes).key,
+                            contextWindow = it.contextWindow,
+                            maxOutput = it.maxOutput,
+                            reasoning = it.reasoning,
                         )
                     },
                 )
@@ -142,7 +154,7 @@ class ModelCatalogRepositoryImpl @Inject constructor(
     }
 
     private companion object {
-        const val CACHE_KEY = "model_catalog_v2"
+        const val CACHE_KEY = "model_catalog_v3"
         const val TTL_MS = 24L * 60L * 60L * 1000L
     }
 }
@@ -166,4 +178,7 @@ private data class CatalogModelDto(
     val vision: Boolean = false,
     val imageGen: Boolean = false,
     val groupKey: String = ModelGroup.OFFICIAL.key,
+    val contextWindow: Int = 0,
+    val maxOutput: Int = 0,
+    val reasoning: Boolean = false,
 )
