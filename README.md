@@ -1,4 +1,4 @@
-# 语光 · Lumo
+﻿# 语光 · Lumo
 
 <img src="docs/screenshots/app-icon.png" width="88" align="right" alt="语光图标">
 
@@ -35,7 +35,7 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 
 | 图 | 说明 |
 |---|---|
-| <a href="https://devwangxiaogang.github.io/Lumo/diagrams/lumo-architecture.html"><img src="docs/diagrams/preview/lumo-architecture.png" width="900" alt="语光 Lumo Android 应用整体架构图"></a> | 整体架构：Compose 页面 → ViewModel → 仓库接口 → Room / 云端服务的分层结构与依赖方向。 |
+| <a href="https://devwangxiaogang.github.io/Lumo/diagrams/lumo-architecture.html"><img src="docs/diagrams/preview/lumo-architecture.png" width="900" alt="语光 Lumo Android 应用整体架构图"></a> | 整体架构：Compose 界面 → ViewModel → 档位路由（PAID 豆包 / FREE 全链路免费）→ 仓库 → Room v5 与两套云端，含设备内、系统能力与云端三个边界。 |
 | <a href="https://devwangxiaogang.github.io/Lumo/diagrams/lumo-chat-sse.html"><img src="docs/diagrams/preview/lumo-chat-sse.png" width="900" alt="语光 Lumo 一次 AI 对话请求的时序图"></a> | 对话时序：从输入到 SSE 增量回包、消息落库、思考折叠与生图工具回环的完整往返。 |
 | <a href="https://devwangxiaogang.github.io/Lumo/diagrams/lumo-realtime-voice.html"><img src="docs/diagrams/preview/lumo-realtime-voice.png" width="900" alt="语光 Lumo 实时语音一次会话的时序图"></a> | 语音时序：从建连鉴权到音频上下行，再到超时与异常降级的完整往返。 |
 | <a href="https://devwangxiaogang.github.io/Lumo/diagrams/lumo-voice-states.html"><img src="docs/diagrams/preview/lumo-voice-states.png" width="900" alt="语光 Lumo 实时语音会话状态机图"></a> | 语音状态机：会话各状态之间的迁移条件与异常分支。 |
@@ -47,6 +47,8 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 ## GitNexus 代码图谱
 
 使用 GitNexus 分析类、函数、调用关系、依赖注入与静态执行链路。查看 [图谱说明与模块依赖图](docs/gitnexus/README.md)，或下载 [全量 JSON](docs/gitnexus/code-graph.json)、[GraphML](docs/gitnexus/code-graph.graphml) 和 [Mermaid 模块图](docs/gitnexus/modules.mmd)。GraphML 可导入 Gephi、Cytoscape、yEd 等工具。
+
+当前索引（1.1）：**4283 节点、7759 条关系、110 个聚类、321 条静态执行流**，覆盖 21 个 Kotlin 包与 75 条跨包依赖。本轮新增的 `data/remote/free`（免费链路）、`data/audio`（MP3 解码）、`ui/components`（档位徽章）已计入模块图。
 
 ### 启动本机浏览服务
 
@@ -421,6 +423,8 @@ Single-module MVVM: Compose UI + ViewModel + Repository, Hilt, Room, OkHttp + ko
 ## GitNexus code graph
 
 Use GitNexus to explore classes, functions, calls, dependency injection, and static execution flows. Read the [graph guide and module dependencies](docs/gitnexus/README.md), or download the [full JSON](docs/gitnexus/code-graph.json), [GraphML](docs/gitnexus/code-graph.graphml), and [Mermaid module graph](docs/gitnexus/modules.mmd). GraphML can be imported into tools such as Gephi, Cytoscape, and yEd.
+
+Current index (1.1): **4283 nodes, 7759 relationships, 110 clusters, 321 static execution flows**, covering 21 Kotlin packages and 75 cross-package dependencies. The new `data/remote/free` (free lane), `data/audio` (MP3 decoding), and `ui/components` (tier badge) packages are included in the module graph.
 
 ### Start the local viewer
 

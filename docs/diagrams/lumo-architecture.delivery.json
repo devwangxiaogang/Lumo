@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "cd103706-a1cc-41fa-83e7-e273f761ae34",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\localProgram\\AIdemo\\.archify\\architecture-lumo-overview-20261107-025458\\candidate.json",
+  "output": "D:\\localProgram\\AIdemo\\docs\\diagrams\\lumo-architecture.html",
+  "specification": {
+    "sha256": "a9752fb129a7c61e23b4ab7a770753d5c2c599b8e9545b9b5e5003679431eaee",
+    "bytes": 12216
+  },
+  "artifact": {
+    "sha256": "10db3ec83cd58059d0a26eee3eab41ab5da69f0962572d0a6cec6917dc9244b1",
+    "bytes": 864695
+  }
+}

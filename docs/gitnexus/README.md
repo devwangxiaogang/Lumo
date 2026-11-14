@@ -1,10 +1,10 @@
 # 语光 Lumo · GitNexus 代码图谱
 
-生成时间：2026-11-08 02:22:58（Asia/Shanghai）
+生成时间：2026-11-15 02:09:15（Asia/Shanghai）
 
-索引提交：`b41020bb787a0ff7b6d192c798d4c6e52cfceabc`。数据来自 GitNexus 本地索引，未导出源码正文。
+索引提交：`738cf1e04a967330ebcc973238c4d766e7875450`。数据来自 GitNexus 本地索引，未导出源码正文。
 
-图谱共 **3140 个节点、5438 条关系、79 个聚类、198 条静态执行流**。文件、目录、文档节点也包含在全量计数中，不能将节点总数视作代码符号数。
+图谱共 **4283 个节点、7759 条关系、110 个聚类、321 条静态执行流**。文件、目录、文档节点也包含在全量计数中，不能将节点总数视作代码符号数。
 
 ## 打开图谱
 
@@ -22,184 +22,199 @@ flowchart LR
   %% Aggregated actual GitNexus relations between Kotlin production packages.
   m0["app-entry"]
   m1["data"]
-  m2["data/local"]
-  m3["data/remote"]
-  m4["di"]
-  m5["domain"]
-  m6["domain/model"]
-  m7["ui"]
-  m8["ui/chat"]
-  m9["ui/components"]
-  m10["ui/list"]
-  m11["ui/model"]
-  m12["ui/onboarding"]
-  m13["ui/prefs"]
-  m14["ui/settings"]
-  m15["ui/shell"]
-  m16["ui/theme"]
-  m17["ui/translate"]
-  m18["ui/voice"]
-  m1 -->|"67"| m2
-  m1 -->|"25"| m5
-  m8 -->|"19"| m1
-  m14 -->|"18"| m1
-  m8 -->|"14"| m5
-  m14 -->|"14"| m5
-  m1 -->|"13"| m6
-  m3 -->|"13"| m6
-  m18 -->|"13"| m1
-  m1 -->|"12"| m3
-  m10 -->|"12"| m5
-  m17 -->|"12"| m1
-  m10 -->|"12"| m1
-  m17 -->|"10"| m3
-  m18 -->|"9"| m3
-  m7 -->|"8"| m14
-  m17 -->|"8"| m7
-  m18 -->|"8"| m5
-  m4 -->|"7"| m2
-  m14 -->|"6"| m6
-  m17 -->|"6"| m2
-  m17 -->|"6"| m5
-  m5 -->|"5"| m6
-  m12 -->|"5"| m5
-  m17 -->|"5"| m6
-  m12 -->|"5"| m1
-  m4 -->|"4"| m5
-  m12 -->|"4"| m13
-  m0 -->|"3"| m1
-  m3 -->|"3"| m5
-  m4 -->|"3"| m1
-  m7 -->|"3"| m15
-  m7 -->|"3"| m6
-  m8 -->|"3"| m3
-  m14 -->|"3"| m13
-  m18 -->|"3"| m6
-  m0 -->|"2"| m7
-  m0 -->|"2"| m12
-  m0 -->|"2"| m13
-  m0 -->|"2"| m16
-  m1 -->|"2"| m4
-  m4 -->|"2"| m6
-  m7 -->|"2"| m8
-  m7 -->|"2"| m10
-  m7 -->|"2"| m17
-  m7 -->|"2"| m18
-  m8 -->|"2"| m2
-  m8 -->|"2"| m6
-  m8 -->|"2"| m11
-  m10 -->|"2"| m6
+  m2["data/audio"]
+  m3["data/local"]
+  m4["data/remote"]
+  m5["data/remote/free"]
+  m6["di"]
+  m7["domain"]
+  m8["domain/model"]
+  m9["ui"]
+  m10["ui/chat"]
+  m11["ui/components"]
+  m12["ui/list"]
+  m13["ui/model"]
+  m14["ui/onboarding"]
+  m15["ui/prefs"]
+  m16["ui/settings"]
+  m17["ui/shell"]
+  m18["ui/theme"]
+  m19["ui/translate"]
+  m20["ui/voice"]
+  m1 -->|"87"| m3
+  m16 -->|"35"| m1
+  m1 -->|"34"| m7
+  m10 -->|"25"| m1
+  m16 -->|"22"| m7
+  m19 -->|"19"| m1
+  m1 -->|"18"| m8
+  m20 -->|"18"| m1
+  m1 -->|"17"| m4
+  m10 -->|"16"| m7
+  m12 -->|"16"| m1
+  m12 -->|"13"| m7
+  m4 -->|"13"| m8
+  m5 -->|"11"| m4
+  m6 -->|"10"| m3
+  m20 -->|"10"| m7
+  m19 -->|"10"| m4
+  m9 -->|"9"| m16
+  m1 -->|"9"| m5
+  m20 -->|"9"| m4
+  m9 -->|"9"| m1
+  m19 -->|"9"| m7
+  m19 -->|"9"| m5
+  m19 -->|"8"| m9
+  m5 -->|"8"| m8
+  m0 -->|"7"| m1
+  m19 -->|"6"| m8
+  m9 -->|"6"| m7
+  m19 -->|"6"| m3
+  m16 -->|"6"| m8
+  m14 -->|"5"| m7
+  m14 -->|"5"| m1
+  m4 -->|"5"| m7
+  m7 -->|"5"| m8
+  m14 -->|"4"| m15
+  m6 -->|"4"| m7
+  m10 -->|"4"| m8
+  m9 -->|"3"| m8
+  m9 -->|"3"| m17
+  m20 -->|"3"| m5
+  m10 -->|"3"| m4
+  m16 -->|"3"| m15
+  m6 -->|"3"| m1
+  m20 -->|"3"| m8
   m10 -->|"2"| m11
-  m14 -->|"2"| m11
-  m17 -->|"2"| m8
-  m17 -->|"2"| m15
-  m4 -->|"1"| m3
-  m8 -->|"1"| m7
-  m10 -->|"1"| m7
-  m10 -->|"1"| m15
-  m11 -->|"1"| m6
-  m12 -->|"1"| m6
-  m14 -->|"1"| m7
-  m18 -->|"1"| m8
+  m10 -->|"2"| m13
+  m9 -->|"2"| m12
+  m9 -->|"2"| m19
+  m9 -->|"2"| m10
+  m9 -->|"2"| m20
+  m19 -->|"2"| m17
+  m16 -->|"2"| m13
+  m16 -->|"2"| m11
+  m12 -->|"2"| m13
+  m0 -->|"2"| m18
+  m0 -->|"2"| m9
+  m0 -->|"2"| m14
+  m5 -->|"2"| m2
+  m0 -->|"2"| m15
+  m1 -->|"2"| m6
+  m6 -->|"2"| m8
+  m10 -->|"2"| m3
+  m12 -->|"2"| m3
+  m12 -->|"2"| m8
+  m19 -->|"2"| m10
+  m6 -->|"1"| m4
+  m10 -->|"1"| m9
+  m11 -->|"1"| m8
+  m12 -->|"1"| m9
+  m12 -->|"1"| m17
+  m13 -->|"1"| m8
+  m14 -->|"1"| m8
+  m16 -->|"1"| m9
+  m16 -->|"1"| m3
+  m20 -->|"1"| m10
 ```
 
 ## 节点类型
 
 | 类型 | 数量 |
 |---|---:|
-| Property | 1392 |
-| Method | 956 |
-| Process | 198 |
-| Class | 156 |
-| Function | 115 |
-| File | 100 |
-| Community | 79 |
-| Folder | 49 |
-| Enum | 41 |
-| Section | 39 |
-| Interface | 15 |
+| Property | 1872 |
+| Method | 1340 |
+| Process | 321 |
+| Class | 204 |
+| Function | 132 |
+| File | 121 |
+| Community | 110 |
+| Enum | 63 |
+| Folder | 51 |
+| Section | 50 |
+| Interface | 19 |
 
 ## 关系类型
 
 | 关系 | 数量 |
 |---|---:|
-| DEFINES | 1108 |
-| HAS_METHOD | 955 |
-| STEP_IN_PROCESS | 794 |
-| CALLS | 657 |
-| HAS_PROPERTY | 612 |
-| MEMBER_OF | 495 |
-| ACCESSES | 398 |
-| CONTAINS | 179 |
-| IMPORTS | 141 |
-| INJECTS | 36 |
-| METHOD_IMPLEMENTS | 32 |
-| IMPLEMENTS | 31 |
+| DEFINES | 1466 |
+| STEP_IN_PROCESS | 1421 |
+| HAS_METHOD | 1339 |
+| CALLS | 938 |
+| HAS_PROPERTY | 825 |
+| MEMBER_OF | 689 |
+| ACCESSES | 525 |
+| CONTAINS | 213 |
+| IMPORTS | 201 |
+| INJECTS | 63 |
+| METHOD_IMPLEMENTS | 42 |
+| IMPLEMENTS | 37 |
 
 ## 静态调用入度较高的符号
 
 入度仅代表索引中识别到的 CALLS 关系数量，不代表运行频次，也不保证覆盖所有调用者。
 
-- [get](../../app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt#L30)：20 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt:30`
-- [get](../../app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt#L11)：19 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt:11`
-- [updateBody](../../app/src/main/java/com/yuguang/lumo/data/local/ChatStore.kt#L157)：12 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/local/ChatStore.kt:157`
-- [inferVision](../../app/src/main/java/com/yuguang/lumo/domain/model/Models.kt#L180)：8 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/Models.kt:180`
-- [decode](../../app/src/main/java/com/yuguang/lumo/data/remote/SseDecoder.kt#L24)：8 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/remote/SseDecoder.kt:24`
-- [stop](../../app/src/main/java/com/yuguang/lumo/data/SpeechReader.kt#L109)：8 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SpeechReader.kt:109`
-- [livePairError](../../app/src/main/java/com/yuguang/lumo/domain/model/Speech.kt#L99)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/Speech.kt:99`
+- [get](../../app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt#L31)：21 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt:31`
+- [get](../../app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt#L11)：20 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt:11`
+- [decode](../../app/src/main/java/com/yuguang/lumo/data/remote/SseDecoder.kt#L28)：14 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/remote/SseDecoder.kt:28`
+- [speech](../../app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt#L23)：13 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt:23`
+- [speech](../../app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt#L69)：13 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt:69`
+- [updateBody](../../app/src/main/java/com/yuguang/lumo/data/local/ChatStore.kt#L173)：12 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/local/ChatStore.kt:173`
+- [chatCompletions](../../app/src/main/java/com/yuguang/lumo/data/remote/EndpointUrls.kt#L48)：10 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/remote/EndpointUrls.kt:48`
+- [livePairError](../../app/src/main/java/com/yuguang/lumo/domain/model/Speech.kt#L122)：9 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/Speech.kt:122`
+- [inferVision](../../app/src/main/java/com/yuguang/lumo/domain/model/Models.kt#L283)：8 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/Models.kt:283`
+- [stop](../../app/src/main/java/com/yuguang/lumo/data/SpeechReader.kt#L113)：8 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SpeechReader.kt:113`
 - [historyStartIndex](../../app/src/main/java/com/yuguang/lumo/domain/model/HistoryWindow.kt#L10)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/HistoryWindow.kt:10`
-- [updateSpeech](../../app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt#L528)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt:528`
-- [arkKeep](../../app/src/main/java/com/yuguang/lumo/domain/model/Models.kt#L197)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/model/Models.kt:197`
-- [update](../../app/src/main/java/com/yuguang/lumo/ui/settings/SettingsViewModel.kt#L84)：6 条入向调用关系；`app/src/main/java/com/yuguang/lumo/ui/settings/SettingsViewModel.kt:84`
-- [speech](../../app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt#L23)：6 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt:23`
-- [speech](../../app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt#L65)：6 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt:65`
-- [speak](../../app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt#L453)：5 条入向调用关系；`app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt:453`
-- [chatCompletions](../../app/src/main/java/com/yuguang/lumo/data/remote/EndpointUrls.kt#L37)：5 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/remote/EndpointUrls.kt:37`
+- [stream](../../app/src/main/java/com/yuguang/lumo/data/remote/OpenAiCompatibleClient.kt#L31)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/remote/OpenAiCompatibleClient.kt:31`
+- [editSpeech](../../app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt#L28)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/domain/SettingsRepository.kt:28`
+- [editSpeech](../../app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt#L75)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/data/SettingsRepositoryImpl.kt:75`
+- [updateSpeech](../../app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt#L572)：7 条入向调用关系；`app/src/main/java/com/yuguang/lumo/ui/translate/TranslateViewModel.kt:572`
 
 ## GitNexus 自动聚类
 
 聚类名称由算法启发式生成，可能混合多个业务职责。
 
-- **Data**：20 个符号
-- **Chat**：18 个符号
-- **Data**：18 个符号
+- **Chat**：22 个符号
+- **Data**：22 个符号
 - **Translate**：16 个符号
 - **Voice**：16 个符号
-- **Data**：13 个符号
+- **Data**：15 个符号
+- **Data**：15 个符号
+- **Settings**：14 个符号
+- **Remote**：14 个符号
+- **Free**：13 个符号
+- **Lumo**：13 个符号
+- **List**：11 个符号
 - **Settings**：11 个符号
 - **Voice**：11 个符号
 - **Translate**：10 个符号
-- **List**：10 个符号
-- **Model**：10 个符号
 - **Translate**：10 个符号
-- **Onboarding**：9 个符号
+- **Data**：9 个符号
+- **Lumo**：9 个符号
 - **Translate**：9 个符号
 - **Translate**：9 个符号
-- **Ui**：8 个符号
-- **Translate**：8 个符号
-- **Local**：8 个符号
-- **Data**：8 个符号
-- **Data**：7 个符号
+- **Data**：9 个符号
 
 ## 较长的静态执行流
 
 这些是分析器沿静态关系识别出的候选链路，不是运行时采样记录。
 
-- **RefreshModels → NormalizeBaseUrl**：8 步
-- **RefreshModels → ArkKeep**：7 步
-- **RefreshModels → FamilyKey**：7 步
-- **RefreshModels → InferImageGen**：7 步
-- **RefreshModels → VersionKey**：7 步
-- **RefreshModels → InferVision**：7 步
-- **UpdateInput → WriteSpeech**：7 步
-- **ChatScreen → SpeechChunks**：6 步
-- **DataSettingsScreen → Get**：6 步
-- **DataSettingsScreen → Get**：6 步
-- **OnCreate → SetPinned**：6 步
-- **RefreshModels → FromLabelRes**：6 步
-- **UpdateInput → EditSpeech**：6 步
-- **RefreshIfStale → NormalizeBaseUrl**：6 步
-- **ApplyVoiceInput → WriteSpeech**：6 步
+- **ProviderSettingsScreen → IsLocalHost**：10 步
+- **Execute → Peek**：10 步
+- **Execute → Primary**：10 步
+- **Execute → SkipSpaces**：10 步
+- **Specs → Peek**：9 步
+- **Specs → SkipSpaces**：9 步
+- **ProviderSettingsScreen → ArkKeep**：8 步
+- **ProviderSettingsScreen → FamilyKey**：8 步
+- **ProviderSettingsScreen → InferImageGen**：8 步
+- **ProviderSettingsScreen → VersionKey**：8 步
+- **ProviderSettingsScreen → InferVision**：8 步
+- **ProviderSettingsScreen → PrettyFreeLabel**：8 步
+- **RunSelfTest → IsMissingModel**：8 步
+- **RunSelfTest → IsRetryableError**：8 步
+- **UpdateInput → MapCommonError**：8 步
 
 ## 覆盖范围与限制
 

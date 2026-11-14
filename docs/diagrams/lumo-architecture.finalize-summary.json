@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\localProgram\\AIdemo\\.archify\\architecture-lumo-overview-20261107-025458\\candidate.json",
+    "sha256": "a9752fb129a7c61e23b4ab7a770753d5c2c599b8e9545b9b5e5003679431eaee",
+    "bytes": 12216
+  },
+  "artifact": {
+    "path": "D:\\localProgram\\AIdemo\\docs\\diagrams\\lumo-architecture.html",
+    "sha256": "10db3ec83cd58059d0a26eee3eab41ab5da69f0962572d0a6cec6917dc9244b1",
+    "bytes": 864695
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\localProgram\\AIdemo\\docs\\diagrams\\lumo-architecture.finalize.json",
+    "summaryReceipt": "D:\\localProgram\\AIdemo\\docs\\diagrams\\lumo-architecture.finalize-summary.json",
+    "browserCheckReceipt": "D:\\localProgram\\AIdemo\\docs\\diagrams\\lumo-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-14T18:19:36.034Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 7228,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 6,
+      "routesOverSuggestedBends": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "from": "vm",
+            "to": "freesvc",
+            "label": "免费语音",
+            "collectionIndex": 3,
+            "artifactIndex": 4
+          },
+          "right": {
+            "from": "tier",
+            "to": "freesvc",
+            "label": "语音",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "point": [
+            224,
+            93.72727272727273
+          ],
+          "sharedNode": "freesvc"
+        },
+        {
+          "left": {
+            "from": "tier",
+            "to": "paid",
+            "label": "PAID",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "from": "repo",
+            "to": "free",
+            "label": "降级链",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "point": [
+            254,
+            400
+          ]
+        },
+        {
+          "left": {
+            "from": "tier",
+            "to": "paid",
+            "label": "PAID",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "right": {
+            "from": "room",
+            "to": "device",
+            "label": "路径",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "point": [
+            254,
+            500
+          ]
+        },
+        {
+          "left": {
+            "from": "tier",
+            "to": "free",
+            "label": "FREE",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "right": {
+            "from": "room",
+            "to": "device",
+            "label": "路径",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "point": [
+            372,
+            500
+          ]
+        },
+        {
+          "left": {
+            "from": "freesvc",
+            "to": "freespeech",
+            "label": "合成",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "right": {
+            "from": "audio",
+            "to": "mic",
+            "label": "PCM",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "point": [
+            434,
+            196.6
+          ]
+        },
+        {
+          "left": {
+            "from": "repo",
+            "to": "free",
+            "label": "降级链",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "right": {
+            "from": "room",
+            "to": "device",
+            "label": "路径",
+            "collectionIndex": 13,
+            "artifactIndex": 14
+          },
+          "point": [
+            358,
+            500
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "from": "tier",
+            "to": "freesvc",
+            "label": "语音",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "bends": 3,
+          "stretch": 1.141
+        },
+        {
+          "relationship": {
+            "from": "freesvc",
+            "to": "freespeech",
+            "label": "合成",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 3,
+          "stretch": 1
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "vm → freesvc and tier → freesvc cross next to freesvc: move node vm or tier so the two reach freesvc from different sides (for example one level with it, one directly above or below it).",
+      "tier → paid crosses repo → free: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "tier → paid crosses room → device: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "tier → free crosses room → device: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "freesvc → freespeech crosses audio → mic: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "repo → free crosses room → device: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "tier → freesvc needs 3 bends: move node tier or freesvc so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "freesvc → freespeech needs 3 bends: move node freesvc or freespeech so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}
