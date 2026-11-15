@@ -302,6 +302,9 @@ fun VoiceChatScreen(
                             color = palette.textDim,
                             fontSize = 12.sp,
                         )
+                        Spacer(Modifier.height(10.dp))
+                        // 开始之前就把链路写清楚：这台机器是实时语音还是免费逐轮。
+                        VoiceEnginePill(state = state, palette = palette, onClick = { showSettings = true })
                     }
                 }
                 (state.error ?: localError)?.let { error ->
@@ -348,6 +351,12 @@ fun VoiceChatScreen(
                             color = palette.textDim,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 2.dp),
+                        )
+                        VoiceEnginePill(
+                            state = state,
+                            palette = palette,
+                            onClick = { showSettings = true },
+                            compact = true,
                         )
                     }
                 }
@@ -564,6 +573,55 @@ private fun StatusChip(connected: Boolean, connecting: Boolean, palette: VoicePa
             Spacer(Modifier.width(6.dp))
             Text(label, color = dot, fontSize = 11.sp)
         }
+    }
+}
+
+/**
+ * 引擎行：这一页到底走哪条链路，一眼能看出来，点开是语音设置。
+ *
+ * 三档文案分开写，是因为它们的体验差得很远（实时 / 逐轮 / 分步），
+ * 用「豆包」一个词盖住反而让人以为是卡了。
+ */
+@Composable
+private fun VoiceEnginePill(
+    state: VoiceChatUiState,
+    palette: VoicePalette,
+    onClick: () -> Unit,
+    compact: Boolean = false,
+) {
+    val label = when {
+        state.connecting -> stringResource(R.string.voice_connecting)
+        state.freeTier -> stringResource(R.string.voice_engine_free)
+        state.fallback -> stringResource(R.string.voice_engine_staged)
+        else -> stringResource(R.string.voice_engine_realtime)
+    }
+    val dot = when {
+        state.freeTier -> palette.gold
+        state.fallback -> palette.accent
+        else -> palette.celadon
+    }
+    // compact 用在状态卡内部，不再套一层玻璃（否则像卡里嵌了个小卡）。
+    val base = if (compact) Modifier else Modifier.glass(shape = CircleShape, level = 0.8f)
+    Row(
+        modifier = base
+            .clip(CircleShape)
+            .pointerInput(label) { detectTapGestures { onClick() } }
+            .padding(horizontal = if (compact) 2.dp else 11.dp, vertical = if (compact) 1.dp else 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Box(Modifier.size(if (compact) 4.dp else 5.dp).background(dot, CircleShape))
+        Text(
+            label,
+            color = if (compact) palette.textDim else palette.text.copy(alpha = 0.86f),
+            fontSize = if (compact) 10.sp else 11.sp,
+        )
+        Icon(
+            LumoIcons.ChevronDown,
+            contentDescription = stringResource(R.string.voice_engine_open),
+            tint = if (compact) palette.textDim else palette.textDim,
+            modifier = Modifier.size(if (compact) 10.dp else 12.dp),
+        )
     }
 }
 

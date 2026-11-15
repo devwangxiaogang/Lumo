@@ -314,7 +314,7 @@
     <string name="section_voice">Voice chat</string>
     <string name="voice_chat_title">Voice chat</string>
     <string name="voice_you">You</string>
-    <string name="voice_assistant">Doubao</string>
+    <string name="voice_assistant">Lumo</string>
     <string name="voice_start">Start talking</string>
     <string name="voice_stop">End conversation</string>
     <string name="voice_connecting">Connecting…</string>
@@ -332,11 +332,11 @@
     <string name="voice_type_hint">You can also type a question</string>
     <string name="voice_need_start">Tap "Start talking" first</string>
     <string name="voice_forbidden_hint">No permission (403): make sure the project of this Speech API Key has Seeduplex enabled</string>
-    <string name="voice_fallback_hint">Realtime voice is unavailable, switched to basic voice chat (ASR → chat model → Doubao TTS)</string>
-    <string name="voice_greeting_hint">Greeting: type text for Doubao to speak</string>
-    <string name="voice_status_connected">Connected</string>
+    <string name="voice_fallback_hint">Realtime voice is not enabled, switched to staged chat: listen → answer → speak</string>
+    <string name="voice_greeting_hint">Say hi: type text and I will read it aloud</string>
+    <string name="voice_status_connected">Online</string>
     <string name="voice_status_connecting">Connecting</string>
-    <string name="voice_status_offline">Offline</string>
+    <string name="voice_status_offline">Standby</string>
     <string name="voice_duration">Duration %1$s</string>
     <string name="voice_settings_title">Voice settings</string>
     <string name="voice_settings_tone">Tone</string>
@@ -398,13 +398,13 @@
     <string name="onboarding_note">You can also skip and fill it in Settings later.</string>
     <string name="onboarding_skip">Skip for now</string>
     <string name="settings_theme_instant">Applies immediately across all screens.</string>
-    <string name="voice_idle_title">Tap start and talk to Doubao</string>
-    <string name="voice_idle_subtitle">End-to-end realtime voice · Doubao answers by voice</string>
+    <string name="voice_idle_title">Tap start and just talk</string>
+    <string name="voice_idle_subtitle">Speak, and it answers — no waiting for typing</string>
     <string name="voice_typing">Type</string>
-    <string name="voice_speaking">Doubao is answering…</string>
+    <string name="voice_speaking">Answering…</string>
     <string name="voice_status_fallback">Basic voice chat · hold to talk</string>
-    <string name="voice_status_connected_hint">Hold to talk, Doubao will answer</string>
-    <string name="voice_hold_hint">Listening — release to let Doubao answer</string>
+    <string name="voice_status_connected_hint">Hold to talk — listening</string>
+    <string name="voice_hold_hint">Listening — release and I answer</string>
     <string name="voice_interrupt_hint">Speaking interrupts the current reply</string>
     <string name="voice_hold_hint_short">Hold the button below and start talking</string>
     <string name="usage_title">Token usage</string>
@@ -526,4 +526,8 @@
     <string name="live_status_idle">Not started</string>
     <string name="try_hint">Try saying something</string>
     <string name="settings_memory_cleared">Cleared %1$d memories</string>
+    <string name="voice_engine_realtime">Realtime · Seeduplex</string>
+    <string name="voice_engine_free">Free path · turn by turn</string>
+    <string name="voice_engine_staged">Staged · listen → answer → speak</string>
+    <string name="voice_engine_open">Voice engine</string>
 </resources>

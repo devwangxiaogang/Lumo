@@ -97,8 +97,14 @@ class VoiceChatViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val saved = settingsRepository.speech().liveVoice
-            state = state.copy(voice = if (saved == VoiceChoice.CLONE) VoiceChoice.FEMALE else saved)
+            val speech = settingsRepository.speech()
+            val saved = speech.liveVoice
+            // 进页先把「这台机器会走哪条链路」算出来：免费档没有端到端实时语音，
+            // 页面上的引擎行要在开始之前就说实话，不能等连接后才翻转。
+            state = state.copy(
+                voice = if (saved == VoiceChoice.CLONE) VoiceChoice.FEMALE else saved,
+                freeTier = !SpeechRouter.realtimeVoice(speech),
+            )
         }
     }
 

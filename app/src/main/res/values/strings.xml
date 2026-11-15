@@ -313,7 +313,7 @@
     <string name="section_voice">语音对话</string>
     <string name="voice_chat_title">语音对话</string>
     <string name="voice_you">你说</string>
-    <string name="voice_assistant">豆包</string>
+    <string name="voice_assistant">语光</string>
     <string name="voice_start">开始对话</string>
     <string name="voice_stop">结束对话</string>
     <string name="voice_connecting">正在连接…</string>
@@ -331,11 +331,11 @@
     <string name="voice_type_hint">也可以打字提问</string>
     <string name="voice_need_start">请先点「开始对话」</string>
     <string name="voice_forbidden_hint">没有调用权限（403）：请到豆包语音控制台「API Key 管理」确认这个 Key 所属项目已开通「实时语音（Seeduplex）」服务</string>
-    <string name="voice_fallback_hint">实时语音未开通或无权限，已自动切换为基础语音对话（豆包识别 → 对话模型 → 豆包朗读）</string>
-    <string name="voice_greeting_hint">打招呼：输入文字让豆包直接朗读</string>
-    <string name="voice_status_connected">已连接</string>
+    <string name="voice_fallback_hint">实时语音没有开通或没有权限，已改为分步对话：识别 → 回答 → 朗读</string>
+    <string name="voice_greeting_hint">打个招呼：输入文字，我念给你听</string>
+    <string name="voice_status_connected">在线</string>
     <string name="voice_status_connecting">连接中</string>
-    <string name="voice_status_offline">未连接</string>
+    <string name="voice_status_offline">待机</string>
     <string name="voice_duration">通话 %1$s</string>
     <string name="voice_settings_title">语音设置</string>
     <string name="voice_settings_tone">音色</string>
@@ -398,13 +398,13 @@
     <string name="onboarding_note">也可以先跳过，稍后在「设置」里填写。</string>
     <string name="onboarding_skip">先跳过，稍后再配置</string>
     <string name="settings_theme_instant">切换后立即生效，所有页面同步。</string>
-    <string name="voice_idle_title">点开始，和豆包聊两句</string>
-    <string name="voice_idle_subtitle">端到端实时语音 · 豆包直接开口回答</string>
+    <string name="voice_idle_title">点开始，说两句就好</string>
+    <string name="voice_idle_subtitle">说完就答，不用等打字</string>
     <string name="voice_typing">打字输入</string>
-    <string name="voice_speaking">豆包正在回答…</string>
+    <string name="voice_speaking">正在回答…</string>
     <string name="voice_status_fallback">基础语音对话 · 按住说话</string>
-    <string name="voice_status_connected_hint">按住说话，豆包会语音回答</string>
-    <string name="voice_hold_hint">正在听你说，松手后豆包立刻回答</string>
+    <string name="voice_status_connected_hint">按住说话，我听着呢</string>
+    <string name="voice_hold_hint">正在听你说，松手就回答</string>
     <string name="voice_interrupt_hint">说话会自动打断当前播报</string>
     <string name="voice_hold_hint_short">按住下方按钮，直接说话</string>
     <string name="usage_title">用量统计</string>
@@ -527,4 +527,8 @@
     <string name="live_status_idle">未开始</string>
     <string name="try_hint">说一句试试</string>
     <string name="settings_memory_cleared">已清空 %1$d 条记忆</string>
+    <string name="voice_engine_realtime">实时语音 · Seeduplex</string>
+    <string name="voice_engine_free">免费链路 · 逐轮对话</string>
+    <string name="voice_engine_staged">分步对话 · 识别 → 回答 → 朗读</string>
+    <string name="voice_engine_open">查看语音引擎</string>
 </resources>
