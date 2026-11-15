@@ -20,3 +20,19 @@ build/
 
 # GitNexus local index and caches (exports live in docs/gitnexus).
 .gitnexus/
+
+# 代码图谱索引（本机生成，见 docs/GitNexus 说明）
+.codegraph/
+
+# 真机联调锁与本地截图（docs/smoke 只在本机留档，不入库）
+.device.lock
+docs/smoke/
+tools/__pycache__/
+
+# 本地 SQLite 拷贝（联调时从真机 pull 出来的，不属于源码）
+/apps.db
+/apps.db-*
+/apps_copy.db
+/*.db
+/*.db-shm
+/*.db-wal

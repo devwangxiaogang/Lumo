@@ -1,0 +1,19 @@
+# 统一按 LF 入库：仓库里原本只有 LF，Windows 侧编辑器把 82 个文件改成了 CRLF，
+# 让每次改动都变成整文件重写。这里钉死文本文件的行尾，二进制文件不做转换。
+* text=auto
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.pro text eol=lf
+*.py text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.webp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ttf binary
+*.jar binary
