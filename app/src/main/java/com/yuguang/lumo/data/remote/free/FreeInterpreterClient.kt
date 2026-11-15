@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -53,29 +55,14 @@ class FreeInterpreterClient @Inject constructor(
         }
         onEvent(AstEvent.Started)
         coroutineScope {
-            val segmenter = Segmenter()
-            for (chunk in audio) {
-                if (!isActive) break
-                // 播报期间丢弃输入：宁可漏一句，也不要把译文再喂回去。
-                if (isAudible()) continue
-                val segments = segmenter.feed(chunk)
-                for (segment in segments) {
-                    val wav = pcmToWav(segment)
-                    val source = runCatching { asr.transcribe(wav, sourceLanguage) }.getOrNull()
-                    if (source.isNullOrBlank()) {
-                        onEvent(AstEvent.Quiet)
-                        continue
-                    }
-                    onEvent(AstEvent.SourceFinal(source))
-                    val translated = runCatching {
-                        translator.translate(source, sourceLanguage, targetLanguage)
-                    }.getOrNull()
-                    if (translated.isNullOrBlank()) continue
-                    onEvent(AstEvent.TargetFinal(translated))
-                    // 朗读与下一段识别并行：不阻塞主循环太久。
+            // 朗读单独一条协程：合成一段要 1–2 秒，串在主循环里会把下一段的识别往后推，
+            // 而免费链路本来就慢。单消费者保证播放顺序与句子顺序一致。
+            val spoken = Channel<String>(Channel.UNLIMITED)
+            val speaker = launch {
+                for (text in spoken) {
                     val speech = runCatching {
                         tts.synthesize(
-                            text = translated,
+                            text = text,
                             lang = targetLanguage,
                             speed = 0,
                             voice = voice,
@@ -84,6 +71,33 @@ class FreeInterpreterClient @Inject constructor(
                     }.getOrNull()
                     if (speech != null) onEvent(AstEvent.Audio(speech.pcm))
                 }
+            }
+            try {
+                val segmenter = Segmenter()
+                for (chunk in audio) {
+                    if (!isActive) break
+                    // 播报期间丢弃输入：宁可漏一句，也不要把译文再喂回去。
+                    if (isAudible()) continue
+                    val segments = segmenter.feed(chunk)
+                    for (segment in segments) {
+                        val wav = pcmToWav(segment)
+                        val source = runCatching { asr.transcribe(wav, sourceLanguage) }.getOrNull()
+                        if (source.isNullOrBlank()) {
+                            onEvent(AstEvent.Quiet)
+                            continue
+                        }
+                        onEvent(AstEvent.SourceFinal(source))
+                        val translated = runCatching {
+                            translator.translate(source, sourceLanguage, targetLanguage)
+                        }.getOrNull()
+                        if (translated.isNullOrBlank()) continue
+                        onEvent(AstEvent.TargetFinal(translated))
+                        spoken.send(translated)
+                    }
+                }
+            } finally {
+                spoken.close()
+                speaker.join()
             }
         }
         onEvent(AstEvent.Finished)

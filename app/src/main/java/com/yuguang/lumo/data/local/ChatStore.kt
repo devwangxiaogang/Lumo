@@ -23,6 +23,11 @@ data class ConversationEntity(
     val pinned: Boolean = false,
     /** 是否请求深度思考。免费车道的思考与正文共享输出额度，默认关闭。 */
     val thinking: Boolean = false,
+    /**
+     * 当前激活分支的叶子消息。0 表示未初始化（老数据迁移前的默认值）。
+     * 会话历史按 leaf 沿 parentId 回溯，切分支只改这一列。
+     */
+    val leafMessageId: Long = 0,
 )
 
 @Entity(
@@ -35,7 +40,7 @@ data class ConversationEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("conversationId")],
+    indices = [Index("conversationId"), Index("parentId")],
 )
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -51,6 +56,11 @@ data class MessageEntity(
     val completionTokens: Int = 0,
     /** 本轮工具调用的轨迹（JSON 行），界面折叠展示。 */
     val toolTrace: String = "",
+    /**
+     * 消息树的父节点；0 表示一条链的起点。
+     * 分支由「同一 parentId 下多条子消息」表达，老数据迁移后是一条单链。
+     */
+    val parentId: Long = 0,
 )
 
 @Entity(
@@ -121,6 +131,22 @@ interface ConversationDao {
     @Query("UPDATE conversations SET thinking = :thinking WHERE id = :id")
     suspend fun setThinking(id: Long, thinking: Boolean)
 
+    /** 分支游标：当前激活路径的叶子消息。0 表示未初始化。 */
+    @Query("UPDATE conversations SET leafMessageId = :messageId WHERE id = :id")
+    suspend fun setLeaf(id: Long, messageId: Long)
+
+    /**
+     * 只更新会话的标题/模型/更新时间。
+     *
+     * 生成过程中会先插入新消息再改会话；若用整行 update(entity)，
+     * 会用旧快照里的 leafMessageId 覆盖刚推进的游标，分支立刻回退。
+     */
+    @Query("UPDATE conversations SET title = :title, model = :model, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun touch(id: Long, title: String, model: String, updatedAt: Long)
+
+    @Query("SELECT leafMessageId FROM conversations WHERE id = :id")
+    suspend fun leaf(id: Long): Long?
+
     @Query("UPDATE conversations SET title = :title WHERE id = :id")
     suspend fun rename(id: Long, title: String)
 
@@ -147,6 +173,13 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, id ASC")
     suspend fun list(conversationId: Long): List<MessageEntity>
 
+    /** 分支：同一父节点下的所有子消息，按时间升序（兄弟切换器用）。 */
+    @Query(
+        "SELECT * FROM messages WHERE conversationId = :conversationId AND parentId = :parentId " +
+            "ORDER BY createdAt ASC, id ASC",
+    )
+    suspend fun children(conversationId: Long, parentId: Long): List<MessageEntity>
+
     @Query(
         "SELECT * FROM messages WHERE conversationId = :conversationId AND status = 'DONE' " +
             "ORDER BY createdAt DESC, id DESC LIMIT :limit",
@@ -167,6 +200,10 @@ interface MessageDao {
 
     @Insert
     suspend fun insert(entity: MessageEntity): Long
+
+    /** 编辑并分支：按 id 取目标消息，用它定位同级的父节点。 */
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun byId(id: Long): MessageEntity?
 
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun delete(id: Long)

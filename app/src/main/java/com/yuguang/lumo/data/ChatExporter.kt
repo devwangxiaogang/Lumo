@@ -7,6 +7,7 @@ import com.yuguang.lumo.data.local.AttachmentDao
 import com.yuguang.lumo.data.local.ConversationDao
 import com.yuguang.lumo.data.local.MessageDao
 import com.yuguang.lumo.domain.model.AttachmentSource
+import com.yuguang.lumo.domain.model.BranchPath
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +41,15 @@ class ChatExporter @Inject constructor(
     suspend fun export(conversationId: Long, uri: Uri, format: Format): Int =
         withContext(Dispatchers.IO) {
             val conversation = conversationDao.get(conversationId) ?: return@withContext 0
-            val messages = messageDao.list(conversationId)
+            // 1.3：只导出当前激活分支。导出是「给人看的」，把几条分叉全铺进去会变成一锅粥；
+            // 需要完整备份请用 ZIP（那里保留消息树）。
+            val messages = BranchPath.resolveOrdered(
+                items = messageDao.list(conversationId),
+                leafId = conversation.leafMessageId,
+                order = compareBy({ it.createdAt }, { it.id }),
+                idOf = { it.id },
+                parentOf = { it.parentId },
+            )
             val attachments = messages.associate { message ->
                 message.id to attachmentDao.forMessage(message.id)
             }

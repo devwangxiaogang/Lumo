@@ -55,26 +55,33 @@ enum class ProviderId(
     /**
      * 免费车道：Kilo 公共网关的免费池，无需任何密钥。
      *
-     * 清单会被远端目录覆盖；这里的静态项是断网/未刷新时的兜底，
-     * 按「自动路由 → 通用对话 → 视觉 → 大上下文」顺序排列。
+     * 清单会被远端目录覆盖；这里的静态项是断网 / 未刷新时的兜底。
+     * 顺序即「首选 → 兜底」：先给实测最快最稳的模型，再按能力补位，
+     * 自动路由 kilo-auto 放在最后——它 2026-11 起对匿名用户长期 429。
+     *
+     * 2026-11-15 逐个实测后剔除的模型（见 docs/FREE-MODELS.md）：
+     * - inclusionai/ling-3.2-flash:free：整日额度 limit_rpd，连续测试 0/N 通过；
+     * - baidu/ernie-5.5-flash-preview:free：强制思考，App 默认关思考时直接 400；
+     * - liquid/lfm-3-1.7b:free：同上，且 1.7B 中文质量不足；
+     * - nvidia/nemotron-3-ultra-550b-a55b:free：503 居多，偶尔首字 60 秒以上。
      */
     FREE(
         nameRes = R.string.provider_free,
         defaultBaseUrl = "https://ai-gateway.kilo.ai/api/v1",
-        defaultModel = "kilo-auto/free",
+        defaultModel = "nvidia/nemotron-3.5-lightning:free",
         models = listOf(
-            ModelOption("kilo-auto/free", "Auto (free)", R.string.group_free, vision = true, contextWindow = 256_000, maxOutput = 32_768, reasoning = true),
             ModelOption("nvidia/nemotron-3.5-lightning:free", "Nemotron 3.5 Lightning", R.string.group_free, contextWindow = 1_000_000, maxOutput = 65_536, reasoning = true),
             ModelOption("nvidia/nemotron-3.5-super-vl:free", "Nemotron 3.5 Super VL", R.string.group_free, vision = true, contextWindow = 1_000_000, maxOutput = 131_072, reasoning = true),
-            ModelOption("inclusionai/ling-3.2-flash:free", "Ling 3.2 Flash", R.string.group_free, vision = true, contextWindow = 1_048_576, maxOutput = 262_144, reasoning = true),
-            ModelOption("cohere/north-mini-code:free", "North Mini Code", R.string.group_free, contextWindow = 256_000, maxOutput = 64_000, reasoning = true),
-            ModelOption("reflection/beam-free", "Beam 1.0", R.string.group_free, contextWindow = 1_048_576, maxOutput = 131_072, reasoning = true),
-            ModelOption("nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra", R.string.group_free, contextWindow = 1_000_000, maxOutput = 65_536, reasoning = true),
-            ModelOption("liquid/lfm-3-1.7b:free", "LFM3 1.7B", R.string.group_free, contextWindow = 262_144, maxOutput = 8_192, reasoning = true),
-            ModelOption("particle-ai/particle-1:free", "Particle-1", R.string.group_free, vision = true, contextWindow = 1_048_576, maxOutput = 131_072, reasoning = true),
-            ModelOption("dots-studio/dots-3-note-preview:free", "Dots3 Note Preview", R.string.group_free, vision = true, contextWindow = 512_000, maxOutput = 460_800, reasoning = true),
             ModelOption("baidu/ernie-5.5-flash-preview:free", "ERNIE 5.5 Flash Preview", R.string.group_free, contextWindow = 1_024_000, maxOutput = 921_600, reasoning = true),
+            ModelOption("dots-studio/dots-3-note-preview:free", "Dots3 Note Preview", R.string.group_free, vision = true, contextWindow = 512_000, maxOutput = 460_800, reasoning = true),
+            ModelOption("particle-ai/particle-1:free", "Particle-1", R.string.group_free, vision = true, contextWindow = 1_048_576, maxOutput = 131_072, reasoning = true),
+            ModelOption("reflection/beam-free", "Beam 1.0", R.string.group_free, contextWindow = 1_048_576, maxOutput = 131_072, reasoning = true),
+            ModelOption("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "Nemotron 3 Nano Omni", R.string.group_free, vision = true, contextWindow = 256_000, maxOutput = 65_536, reasoning = true),
+            ModelOption("stealth/glyph-cluster", "Glyph Cluster", R.string.group_free, contextWindow = 256_000, maxOutput = 256_000, reasoning = true),
+            ModelOption("liquid/lfm-3-1.7b:free", "LFM3 1.7B", R.string.group_free, contextWindow = 262_144, maxOutput = 8_192, reasoning = true),
+            ModelOption("cohere/north-mini-code:free", "North Mini Code", R.string.group_free, contextWindow = 256_000, maxOutput = 64_000, reasoning = true),
             ModelOption("openrouter/free", "OpenRouter Free Router", R.string.group_free, vision = true, contextWindow = 200_000, maxOutput = 32_768, reasoning = true),
+            ModelOption("kilo-auto/free", "Auto (free)", R.string.group_free, vision = true, contextWindow = 256_000, maxOutput = 32_768, reasoning = true),
         ),
         requiresKey = false,
     ),
@@ -93,23 +100,69 @@ enum class ProviderId(
     val keyOptional: Boolean get() = !requiresKey
 }
 
-/** 免费车道的降级顺序：正文出来之前失败才切换。 */
+/**
+ * 免费车道的降级顺序：正文出来之前失败才切换。
+ *
+ * 2026-11 实测：前三个首字都在 1 秒内且连续 3 轮全通；kilo-auto 放最后，
+ * 它现在多半直接 429，留在链尾只是为了上游恢复后能自动吃到。
+ */
 val freeFallbackChain: List<String> = listOf(
-    "kilo-auto/free",
     "nvidia/nemotron-3.5-lightning:free",
-    "cohere/north-mini-code:free",
+    "nvidia/nemotron-3.5-super-vl:free",
+    "baidu/ernie-5.5-flash-preview:free",
+    "particle-ai/particle-1:free",
     "reflection/beam-free",
+    "kilo-auto/free",
 )
 
-/** 免费车道的首选翻译模型顺序（LLM 直译质量实测均可用）。 */
+/** 免费车道的首选翻译模型顺序（逐句直译质量实测均可用）。 */
 val freeTranslateChain: List<String> = listOf(
-    "kilo-auto/free",
     "nvidia/nemotron-3.5-lightning:free",
-    "cohere/north-mini-code:free",
+    "dots-studio/dots-3-note-preview:free",
+    "particle-ai/particle-1:free",
+)
+
+/**
+ * 免费车道的视觉模型顺序。
+ *
+ * 必须与 [freeFallbackChain] 分开：文本模型收到图片会直接 400/404，
+ * 图片翻译拿文本链当兜底只会把失败拖长。
+ */
+val freeVisionChain: List<String> = listOf(
+    "nvidia/nemotron-3.5-super-vl:free",
+    "dots-studio/dots-3-note-preview:free",
+    "particle-ai/particle-1:free",
+    "openrouter/free",
 )
 
 /** 免费车道里唯一支持音频输入的模型（实测可转写，准确率一般）。 */
 const val FREE_AUDIO_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+
+/**
+ * 实测不可用的免费模型：即使远端目录里还列着，也不放进选择器。
+ *
+ * 远端目录只能说明「上游声明它免费」，不说明「现在真的能调」——
+ * 这份名单是 2026-11-15 逐个发请求验证出来的，理由见 docs/FREE-MODELS.md。
+ */
+val freeModelBlocklist: Set<String> = setOf(
+    // 每日额度 limit_rpd：每天必然 429，连续测试 0/3 通过。
+    "inclusionai/ling-3.2-flash:free",
+    // 偶发 60 秒首字、503 居多，体验不可接受。
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+)
+
+/**
+ * 强制思考的免费模型：不能下发 reasoning.enabled=false，否则 400「Reasoning is mandatory」。
+ *
+ * 对这些模型直接省略该字段（而不是先撞一次 400 再重试），省掉一轮往返；
+ * 代价是它们总会带上一小段思考过程。
+ */
+val freeForcedReasoning: Set<String> = setOf(
+    "baidu/ernie-5.5-flash-preview:free",
+    "liquid/lfm-3-1.7b:free",
+    // 实测（2026-11-15 真机自检）：传 enabled=false 报 400，省略字段则正常。
+    "openrouter/free",
+)
 
 data class ModelChoice(
     val provider: ProviderId,
@@ -201,6 +254,8 @@ data class Conversation(
     val preview: String? = null,
     /** 会话累计 token，列表页副标题用；0 表示没有数据。 */
     val totalTokens: Int = 0,
+    /** 当前激活分支的叶子消息；0 表示未初始化，按全量线性兜底。 */
+    val leafMessageId: Long = 0,
 )
 
 data class ChatMessage(
@@ -217,6 +272,8 @@ data class ChatMessage(
     val completionTokens: Int = 0,
     /** 工具调用轨迹（JSON 行），界面折叠展示。 */
     val toolTrace: String = "",
+    /** 消息树的父节点；0 表示一条链的起点。 */
+    val parentId: Long = 0,
 )
 
 /** 发给接口的消息。图片用 data URL，由客户端从本地文件编码。 */
@@ -298,7 +355,6 @@ object ModelCapabilities {
                     id.contains("vision") ||
                     id.contains("particle") ||
                     id.contains("dots") ||
-                    id.contains("ling") ||
                     id == "kilo-auto/free" ||
                     id == "openrouter/free"
             ProviderId.CUSTOM -> false

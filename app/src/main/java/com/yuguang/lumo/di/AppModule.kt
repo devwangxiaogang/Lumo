@@ -6,11 +6,13 @@ import androidx.room.Room
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.yuguang.lumo.data.local.AppDatabase
+import com.yuguang.lumo.data.local.ArenaDao
 import com.yuguang.lumo.data.local.AttachmentDao
 import com.yuguang.lumo.data.local.ConversationDao
 import com.yuguang.lumo.data.local.MemoryDao
 import com.yuguang.lumo.data.local.MessageDao
 import com.yuguang.lumo.data.local.SearchDao
+import com.yuguang.lumo.data.local.StatsDao
 import com.yuguang.lumo.data.local.TranslationDao
 import dagger.Module
 import dagger.Provides
@@ -72,6 +74,7 @@ object AppModule {
                 com.yuguang.lumo.data.local.MIGRATION_2_3,
                 com.yuguang.lumo.data.local.MIGRATION_3_4,
                 com.yuguang.lumo.data.local.MIGRATION_4_5,
+                com.yuguang.lumo.data.local.MIGRATION_5_6,
             )
             // 未覆盖的跨版本变更才重建，避免丢掉已迁移的会话数据。
             .fallbackToDestructiveMigration(true)
@@ -94,6 +97,12 @@ object AppModule {
 
     @Provides
     fun provideMemoryDao(database: AppDatabase): MemoryDao = database.memoryDao()
+
+    @Provides
+    fun provideArenaDao(database: AppDatabase): ArenaDao = database.arenaDao()
+
+    @Provides
+    fun provideStatsDao(database: AppDatabase): StatsDao = database.statsDao()
 
     @Provides
     @Singleton

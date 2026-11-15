@@ -12,8 +12,10 @@ import androidx.room.RoomDatabase
         TranslationEntity::class,
         MessageFts::class,
         MemoryEntity::class,
+        ArenaRunEntity::class,
+        ArenaOutputEntity::class,
     ],
-    version = 5,
+    version = 6,
     // 导出 schema 到 app/schemas，迁移才能被 room-testing 验证。
     exportSchema = true,
 )
@@ -29,4 +31,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun searchDao(): SearchDao
 
     abstract fun memoryDao(): MemoryDao
+
+    abstract fun arenaDao(): ArenaDao
+
+    abstract fun statsDao(): StatsDao
 }

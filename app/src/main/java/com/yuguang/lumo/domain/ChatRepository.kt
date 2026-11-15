@@ -54,5 +54,17 @@ interface ChatRepository {    fun observeConversations(): Flow<List<Conversation
 
     suspend fun retry(conversationId: Long): String?
 
+    /**
+     * 编辑并分支：在 [messageId] 的父节点下插入新的用户消息并生成。
+     * 返回 null 表示已开始，否则是需要展示给用户的原因。
+     */
+    suspend fun editAndSend(conversationId: Long, messageId: Long, newText: String): String?
+
+    /**
+     * 切分支：把会话叶子指向 [messageId] 子树里最深的那条，再沿此路径显示历史。
+     * 返回 null 表示成功。
+     */
+    suspend fun switchBranch(conversationId: Long, messageId: Long): String?
+
     fun stop(conversationId: Long)
 }

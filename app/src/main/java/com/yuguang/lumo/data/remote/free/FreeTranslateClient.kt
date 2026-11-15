@@ -2,6 +2,7 @@ package com.yuguang.lumo.data.remote.free
 
 import android.content.Context
 import com.yuguang.lumo.R
+import com.yuguang.lumo.data.FreeModelHealth
 import com.yuguang.lumo.data.remote.EndpointUrls
 import com.yuguang.lumo.data.remote.OpenAiCompatibleClient
 import com.yuguang.lumo.domain.model.ProviderId
@@ -41,6 +42,7 @@ class FreeTranslateClient @Inject constructor(
     private val client: OpenAiCompatibleClient,
     private val http: OkHttpClient,
     private val json: Json,
+    private val health: FreeModelHealth,
 ) {
     suspend fun translate(
         text: String,
@@ -61,7 +63,8 @@ class FreeTranslateClient @Inject constructor(
 
     /** 让免费池模型直译。逐个模型尝试，第一个出正文的就算成功。 */
     private suspend fun llmTranslate(text: String, source: String, target: String): String? {
-        for (model in freeTranslateChain) {
+        // 与对话共用同一份健康记录：对话里刚失败过的模型，翻译也不用再撞一次。
+        for (model in health.filterChain(freeTranslateChain)) {
             val request = ChatRequest(
                 model = model,
                 messages = listOf(
@@ -85,7 +88,11 @@ class FreeTranslateClient @Inject constructor(
                 }
             }
             val out = buffer.toString().trim().trim('"', '“', '”', '\n')
-            if (out.isNotBlank() && !looksLikeRefusal(out)) return out
+            if (out.isNotBlank() && !looksLikeRefusal(out)) {
+                health.recordSuccess(model)
+                return out
+            }
+            health.recordFailure(model, context.getString(R.string.free_translate_failed))
         }
         return null
     }
@@ -147,7 +154,7 @@ class FreeTranslateClient @Inject constructor(
     private fun translateBody(request: ChatRequest): JsonObject = buildJsonObject {
         put("model", request.model)
         put("stream", true)
-        putJsonObject("reasoning") { put("enabled", false) }
+        // 不下发 reasoning：部分免费模型强制思考，传 enabled=false 会 400（见 Providers.freeChatBody）。
         put("max_completion_tokens", request.maxOutputTokens)
         putJsonArray("messages") {
             request.messages.forEach { message ->

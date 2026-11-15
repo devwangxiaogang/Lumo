@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yuguang.lumo.R
 import com.yuguang.lumo.domain.model.SpeechTier
+import com.yuguang.lumo.ui.theme.LumoIcons
 
 /**
  * 「免费」胶囊。只在 FREE 档绘制，PAID 档返回空，保证收费链路外观与 1.0 完全一致。
@@ -40,7 +39,7 @@ fun TierBadge(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Icon(
-            Icons.Filled.Bolt,
+            LumoIcons.Bolt,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onTertiaryContainer,
             modifier = Modifier.size(12.dp),

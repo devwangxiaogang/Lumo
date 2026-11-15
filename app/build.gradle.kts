@@ -16,8 +16,8 @@ android {
         applicationId = "com.yuguang.lumo"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 4
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +36,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // 版本号展示用 BuildConfig.VERSION_NAME，避免设置页写死的字符串再次过期。
+        buildConfig = true
     }
 }
 
@@ -59,10 +61,7 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

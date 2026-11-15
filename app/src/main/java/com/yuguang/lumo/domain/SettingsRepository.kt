@@ -32,4 +32,9 @@ interface SettingsRepository {
     suspend fun memoryEnabled(): Boolean
 
     suspend fun setMemoryEnabled(enabled: Boolean)
+
+    /** AI 自动标题总开关。默认开启；关闭后列表沿用首条消息截断标题。 */
+    suspend fun autoTitleEnabled(): Boolean
+
+    suspend fun setAutoTitleEnabled(enabled: Boolean)
 }

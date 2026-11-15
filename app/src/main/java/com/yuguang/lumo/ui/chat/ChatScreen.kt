@@ -8,19 +8,13 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
@@ -31,6 +25,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -57,21 +52,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Brush
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -88,7 +70,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -101,13 +82,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,27 +107,55 @@ import coil.compose.AsyncImage
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.ChatExporter
 import com.yuguang.lumo.data.local.ChatMediaStore
+import com.yuguang.lumo.domain.ChatCommand
 import com.yuguang.lumo.domain.model.ChatMessage
 import com.yuguang.lumo.domain.model.Conversation
 import com.yuguang.lumo.domain.model.MessageStatus
 import com.yuguang.lumo.domain.model.Role
 import com.yuguang.lumo.ui.localizedSummary
 import com.yuguang.lumo.ui.model.ModelPickerDialog
+import com.yuguang.lumo.ui.shell.AppSection
 import com.yuguang.lumo.ui.components.TierBadge
 import com.yuguang.lumo.domain.model.SpeechTier
 import com.yuguang.lumo.domain.model.ProviderId
 import kotlinx.coroutines.launch
 import java.io.File
 import android.content.ClipData
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.toClipEntry
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.semantics.Role as SemanticsRole
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import com.yuguang.lumo.ui.backdrop.BackdropHost
+import com.yuguang.lumo.ui.components.GlassChip
+import com.yuguang.lumo.ui.components.GlassTone
+import com.yuguang.lumo.ui.components.GlassTopBar
+import com.yuguang.lumo.ui.components.InkDots
+import com.yuguang.lumo.ui.components.InkRipple
+import com.yuguang.lumo.ui.components.PoemLine
+import com.yuguang.lumo.ui.components.PressScale
+import com.yuguang.lumo.ui.components.SealBadge
+import com.yuguang.lumo.ui.components.glass
+import com.yuguang.lumo.ui.theme.LocalLumoPalette
+import com.yuguang.lumo.ui.theme.LumoIcons
+import com.yuguang.lumo.ui.theme.LumoType
+import com.yuguang.lumo.ui.theme.SceneryCatalog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenSection: (AppSection) -> Unit = {},
+    onOpenConversation: (Long) -> Unit = {},
+    onSeedTranslate: (String) -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -155,10 +169,20 @@ fun ChatScreen(
     var showPersona by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showUsage by remember { mutableStateOf(false) }
+    var showCommands by remember { mutableStateOf(false) }
+    // 1.3 分支：被编辑的用户消息（弹窗预填原文）。
+    var editing by remember { mutableStateOf<ChatMessage?>(null) }
+    // 无参指令（/voice、/new、/help）点选后直接执行，带参指令只回填模板等用户补全。
+    val applyCommand: (String) -> Unit = { template ->
+        viewModel.updateInput(template)
+        if (!template.endsWith(" ")) viewModel.submit()
+    }
     var exportFormat by remember { mutableStateOf(ChatExporter.Format.MARKDOWN) }
     var previewPath by remember { mutableStateOf<String?>(null) }
     var voiceMode by remember { mutableStateOf(false) }
     var voicePhase by remember { mutableStateOf(VoicePhase.Idle) }
+    // 写作态：把输入框拉高到半屏，长文本一眼能看全，收起后回到常驻的三行高度。
+    var composerExpanded by remember { mutableStateOf(false) }
     val speech = remember {
         SpeechInput(
             context = context,
@@ -213,6 +237,17 @@ fun ChatScreen(
             }
         }
     }
+    LaunchedEffect(Unit) {
+        viewModel.nav.collect { event ->
+            when (event) {
+                is ChatNav.Translate -> onSeedTranslate(event.text)
+                is ChatNav.OpenConversation -> onOpenConversation(event.id)
+                ChatNav.Voice -> onOpenSection(AppSection.VoiceChat)
+                ChatNav.Help -> showCommands = true
+                ChatNav.PickModel -> showModels = true
+            }
+        }
+    }
     val tail = state.messages.lastOrNull()
     var previousCount by remember { mutableStateOf(0) }
     LaunchedEffect(state.messages.size, tail?.content?.length, tail?.reasoning?.length, tail?.attachments?.size) {
@@ -224,67 +259,58 @@ fun ChatScreen(
         }
     }
 
+    BackdropHost(scene = SceneryCatalog.forRoute("chat")) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                title = {
-                    Column {
-                        val headerTitle = state.conversation?.title
-                        Text(
-                            headerTitle?.takeIf { it.isNotBlank() }
-                                ?: stringResource(if (headerTitle == null) R.string.chat_fallback else R.string.new_chat),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        val conversation = state.conversation
-                        if (conversation != null) {
-                            Row(
-                                modifier = Modifier
-                                    .padding(top = 2.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { showModels = true }
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    conversation.provider.localizedSummary(conversation.model),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Icon(
-                                    Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp),
-                                )
-                                if (conversation.provider == ProviderId.FREE) {
-                                    Spacer(Modifier.width(6.dp))
-                                    TierBadge(tier = SpeechTier.FREE)
-                                }
-                            }
+            val conversation = state.conversation
+            val palette = LocalLumoPalette.current
+            GlassTopBar(
+                // GlassTopBar 只收字符串标题：模型 chip 因此挪进 actions，做了印面样式。
+                title = conversation?.title?.takeIf { it.isNotBlank() }
+                    ?: stringResource(if (conversation == null) R.string.chat_fallback else R.string.new_chat),
+                onBack = onBack,
+                actions = {
+                    if (conversation != null) {
+                        // 模型 chip：朱砂淡底 + 印面小字，读起来像盖在页眉上的一方闲章。
+                        Row(
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(palette.cinnabar.copy(alpha = 0.12f))
+                                .clickable { showModels = true }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                conversation.provider.localizedSummary(conversation.model),
+                                style = LumoType.seal.copy(fontSize = 11.sp, letterSpacing = 0.5.sp),
+                                color = palette.cinnabar,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 132.dp),
+                            )
+                            Icon(
+                                LumoIcons.ChevronDown,
+                                contentDescription = stringResource(R.string.change_model),
+                                tint = palette.cinnabar,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                        if (conversation.provider == ProviderId.FREE) {
+                            Spacer(Modifier.width(4.dp))
+                            TierBadge(tier = SpeechTier.FREE)
                         }
                     }
-                },
-                actions = {
                     Box {
                         IconButton(onClick = { showMore = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more_actions))
+                            Icon(LumoIcons.More, contentDescription = stringResource(R.string.more_actions))
                         }
                         DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.persona_title)) },
-                                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                                leadingIcon = { Icon(LumoIcons.Person, contentDescription = null) },
                                 onClick = {
                                     showMore = false
                                     showPersona = true
@@ -292,7 +318,7 @@ fun ChatScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.section_settings)) },
-                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                                leadingIcon = { Icon(LumoIcons.Settings, contentDescription = null) },
                                 onClick = {
                                     showMore = false
                                     onOpenSettings()
@@ -305,9 +331,9 @@ fun ChatScreen(
                                     leadingIcon = {
                                         Icon(
                                             if (state.conversation?.thinking == true) {
-                                                Icons.Filled.CheckBox
+                                                LumoIcons.CheckOn
                                             } else {
-                                                Icons.Filled.CheckBoxOutlineBlank
+                                                LumoIcons.CheckOff
                                             },
                                             contentDescription = null,
                                         )
@@ -320,15 +346,28 @@ fun ChatScreen(
                             }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.usage_title)) },
-                                leadingIcon = { Icon(Icons.Filled.Insights, contentDescription = null) },
+                                leadingIcon = { Icon(LumoIcons.Chart, contentDescription = null) },
                                 onClick = {
                                     showMore = false
                                     showUsage = true
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.auto_read_title)) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (state.autoRead) LumoIcons.CheckOn else LumoIcons.CheckOff,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    showMore = false
+                                    viewModel.setAutoRead(!state.autoRead)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.export_markdown)) },
-                                leadingIcon = { Icon(Icons.Filled.Description, contentDescription = null) },
+                                leadingIcon = { Icon(LumoIcons.Doc, contentDescription = null) },
                                 onClick = {
                                     showMore = false
                                     exportFormat = ChatExporter.Format.MARKDOWN
@@ -337,7 +376,7 @@ fun ChatScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.export_html)) },
-                                leadingIcon = { Icon(Icons.Filled.Code, contentDescription = null) },
+                                leadingIcon = { Icon(LumoIcons.Code, contentDescription = null) },
                                 onClick = {
                                     showMore = false
                                     exportFormat = ChatExporter.Format.HTML
@@ -352,8 +391,19 @@ fun ChatScreen(
         bottomBar = {
             Column {
                 val tailDone = state.messages.lastOrNull()?.status == MessageStatus.DONE
-                if (state.messages.isNotEmpty() && !state.generating && tailDone) {
+                // 键盘弹起时 bottomBar 可用高度被压缩，快捷 chip 会被挤成没有字的玻璃细条：
+                // 这里让它在键盘态整行淡出，把注意力留给输入本身。
+                val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                AnimatedVisibility(
+                    visible = !composerExpanded && !imeVisible && state.messages.isNotEmpty() &&
+                        !state.generating && tailDone,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
                     QuickPrompts(onPick = { viewModel.applySuggestion(it, false) })
+                }
+                if (!composerExpanded && !state.generating && ChatCommand.looksLikeCommand(state.input)) {
+                    CommandPalette(query = state.input, onPick = { template -> applyCommand(template) })
                 }
                 ChatComposer(
                     input = state.input,
@@ -363,8 +413,13 @@ fun ChatScreen(
                     voiceMode = voiceMode,
                     voicePhase = voicePhase,
                     onInput = viewModel::updateInput,
-                    onSend = viewModel::send,
+                    onSend = {
+                        viewModel.submit()
+                        // 发送后收回常态，把屏幕还给消息区。
+                        composerExpanded = false
+                    },
                     onStopGeneration = viewModel::stop,
+                    onShowCommands = { showCommands = true },
                     onToggleDrawMode = viewModel::toggleDrawMode,
                     onPickImages = {
                         pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -386,6 +441,8 @@ fun ChatScreen(
                     },
                     onHoldStart = { speech.start(viewModel.state.value.input) },
                     onHoldEnd = { speech.stop() },
+                    expanded = composerExpanded,
+                    onToggleExpand = { composerExpanded = !composerExpanded },
                 )
             }
         },
@@ -415,6 +472,19 @@ fun ChatScreen(
                         MessageBubble(
                             message = message,
                             speaking = state.speakingId == message.id,
+                            branch = state.branches[message.id],
+                            onBranchPrev = { id -> viewModel.switchBranch(id) },
+                            onBranchNext = { id -> viewModel.switchBranch(id) },
+                            /** 用户消息可以「编辑并分支」；生成中禁用，避免和当前任务打架。 */
+                            onEditBranch = if (
+                                message.role == Role.USER &&
+                                message.status == MessageStatus.DONE &&
+                                !state.generating
+                            ) {
+                                { editing = message }
+                            } else {
+                                null
+                            },
                             onRetry = viewModel::retry,
                             onSpeak = { viewModel.toggleSpeak(message) },
                             onCopy = {
@@ -436,13 +506,14 @@ fun ChatScreen(
                             .padding(bottom = 8.dp),
                     ) {
                         Icon(
-                            Icons.Filled.KeyboardArrowDown,
+                            LumoIcons.ChevronDown,
                             contentDescription = stringResource(R.string.scroll_to_bottom),
                         )
                     }
                 }
             }
         }
+    }
     }
 
     val conversation = state.conversation
@@ -473,6 +544,48 @@ fun ChatScreen(
     }
     previewPath?.let { path ->
         ImagePreviewDialog(path = path, onDismiss = { previewPath = null })
+    }
+    if (showCommands) {
+        CommandSheet(
+            onPick = { template -> applyCommand(template) },
+            onDismiss = { showCommands = false },
+        )
+    }
+    editing?.let { target ->
+        var draft by remember(target.id) { mutableStateOf(target.content) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text(stringResource(R.string.branch_edit_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.branch_edit_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 8,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val text = draft
+                        editing = null
+                        viewModel.editAndSend(target.id, text)
+                    },
+                    enabled = draft.isNotBlank(),
+                ) { Text(stringResource(R.string.branch_edit_send)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = null }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
     if (showUsage) {
         UsageSheet(
@@ -547,26 +660,58 @@ private fun WelcomePane(
     onSuggest: (String, Boolean) -> Unit,
 ) {
     val summary = persona.lineSequence().firstOrNull { it.isNotBlank() }?.take(48).orEmpty()
-    Column(
-        modifier = modifier.padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        Spacer(Modifier.height(24.dp))
-        Text(stringResource(R.string.welcome_title), style = MaterialTheme.typography.headlineSmall)
-        if (summary.isNotBlank()) {
-            Text(
-                stringResource(R.string.welcome_persona, summary),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val explain = stringResource(R.string.suggest_explain)
+    val code = stringResource(R.string.suggest_code)
+    val draw = stringResource(R.string.suggest_draw)
+    // 键盘弹起后内容区只剩 300dp 上下：这时先保住诗与标题，建议 chip 让位。
+    // 之前 chip 被 Column 的剩余高度压成「只有玻璃底、没有字」的细条，就是这里少了判断。
+    BoxWithConstraints(modifier = modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+        val roomy = maxHeight >= 380.dp
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            // 纯居中（不是偏上）：下方留白左右对称，才读得出是有意的留白。
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // 还没落笔的纸上先立一句诗：溪山配「明月松间照，清泉石上流」。
+            PoemLine(
+                textRes = R.string.onboarding_poem_2,
+                vertical = true,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.80f),
+                horizontalAlignment = Alignment.CenterHorizontally,
             )
+            // 诗与标题之间 12dp 呼吸。
+            Spacer(Modifier.height(if (roomy) 12.dp else 8.dp))
+            Text(
+                stringResource(R.string.welcome_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (summary.isNotBlank()) {
+                Text(
+                    stringResource(R.string.welcome_persona, summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (roomy) {
+                // 标题与人设之后留 24dp：欢迎块被 56dp 输入条解放出来的空白由这两段呼吸吸收。
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 34.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GlassChip(text = explain, selected = false, onClick = { onSuggest(explain, false) })
+                    GlassChip(text = code, selected = false, onClick = { onSuggest(code, false) })
+                    GlassChip(text = draw, selected = false, onClick = { onSuggest(draw, true) })
+                }
+            }
         }
-        val explain = stringResource(R.string.suggest_explain)
-        val code = stringResource(R.string.suggest_code)
-        val draw = stringResource(R.string.suggest_draw)
-        AssistChip(onClick = { onSuggest(explain, false) }, label = { Text(explain) })
-        AssistChip(onClick = { onSuggest(code, false) }, label = { Text(code) })
-        AssistChip(onClick = { onSuggest(draw, true) }, label = { Text(draw) })
     }
 }
 
@@ -617,6 +762,18 @@ private fun PersonaSheet(
     }
 }
 
+/** 折叠态输入条行高：44dp + 上下各 6dp 内边距 = 56dp 的玻璃条。 */
+private val COMPOSER_ROW_HEIGHT = 44.dp
+
+/** 折叠态输入框只占一行：24dp 正是 bodyLarge 的行高。 */
+private val COMPOSER_LINE_HEIGHT = 24.dp
+
+/** 写作态输入框高度上限的下界，超过就在框内滚动。 */
+private val COMPOSER_MAX_HEIGHT = 168.dp
+
+/** 超过这个字数才显示字数，短句不需要干扰。 */
+private const val WRITING_HINT_THRESHOLD = 120
+
 @Composable
 private fun ChatComposer(
     input: String,
@@ -628,12 +785,15 @@ private fun ChatComposer(
     onInput: (String) -> Unit,
     onSend: () -> Unit,
     onStopGeneration: () -> Unit,
+    onShowCommands: () -> Unit,
     onToggleDrawMode: () -> Unit,
     onPickImages: () -> Unit,
     onRemoveImage: (Uri) -> Unit,
     onToggleVoiceMode: () -> Unit,
     onHoldStart: () -> Unit,
     onHoldEnd: () -> Unit,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
 ) {
     val listening = voicePhase == VoicePhase.Listening
     val recognizing = voicePhase == VoicePhase.Recognizing
@@ -646,16 +806,46 @@ private fun ChatComposer(
         },
         label = "composerBorder",
     )
+    val shape = RoundedCornerShape(28.dp)
+
+    // 写作态高度跟可视区联动：键盘弹起时按剩余高度缩放，永远给消息区留出余地。
+    val density = LocalDensity.current
+    val windowInfo = LocalWindowInfo.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val visibleDp = with(density) { (windowInfo.containerSize.height - imeBottom).toDp() }
+    val writingHeight = ((visibleDp * 0.62f) - 120.dp).coerceIn(COMPOSER_MAX_HEIGHT, 400.dp)
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+    val placeholderRes = when {
+        recognizing -> R.string.recognizing
+        listening -> R.string.listening_ellipsis
+        drawMode -> R.string.draw_hint
+        else -> R.string.input_hint
+    }
+    val fieldStyle = MaterialTheme.typography.bodyLarge.copy(
+        color = MaterialTheme.colorScheme.onSurface,
+        lineHeight = 24.sp,
+    )
+    val canSend = (input.isNotBlank() || pendingImages.isNotEmpty()) && voicePhase == VoicePhase.Idle
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .border(width = 1.dp, color = borderColor, shape = RoundedCornerShape(28.dp)),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
+            .glass(shape = shape, tone = GlassTone.Paper, level = 1f)
+            .border(width = 1.dp, color = borderColor, shape = shape),
+        shape = shape,
+        color = Color.Transparent,
+        tonalElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)) {
             AnimatedVisibility(visible = pendingImages.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -679,7 +869,11 @@ private fun ChatComposer(
                                     .align(Alignment.TopEnd)
                                     .size(24.dp),
                             ) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.remove_image), modifier = Modifier.size(14.dp))
+                                Icon(
+                                    LumoIcons.Close,
+                                    contentDescription = stringResource(R.string.remove_image),
+                                    modifier = Modifier.size(14.dp),
+                                )
                             }
                         }
                     }
@@ -693,97 +887,325 @@ private fun ChatComposer(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
                 )
             }
-            Row(
-                modifier = Modifier.then(if (voiceMode) Modifier.height(52.dp) else Modifier.heightIn(min = 48.dp)),
-                verticalAlignment = if (voiceMode) Alignment.CenterVertically else Alignment.Bottom,
-            ) {
-                IconButton(onClick = onToggleVoiceMode, enabled = voicePhase == VoicePhase.Idle) {
-                    Icon(
-                        if (voiceMode) Icons.Filled.Keyboard else Icons.Filled.Mic,
-                        contentDescription = stringResource(
+
+            if (expanded) {
+                // 写作态：多行文本 + 完整工具行，按住说话、画笔、字数、收起都在这里。
+                BasicTextField(
+                    value = input,
+                    onValueChange = onInput,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp, max = writingHeight)
+                        .focusRequester(focusRequester)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    enabled = !recognizing,
+                    textStyle = fieldStyle,
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    maxLines = Int.MAX_VALUE,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Default,
+                    ),
+                    decorationBox = { inner ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (input.isEmpty()) {
+                                Text(
+                                    stringResource(placeholderRes),
+                                    style = fieldStyle,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            inner()
+                        }
+                    },
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = onToggleVoiceMode,
+                        enabled = voicePhase == VoicePhase.Idle,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            if (voiceMode) LumoIcons.Keyboard else LumoIcons.Mic,
+                            contentDescription = stringResource(
+                                if (voiceMode) R.string.switch_to_keyboard else R.string.switch_to_voice,
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    if (voiceMode) {
+                        ChatHoldPad(
+                            listening = listening,
+                            recognizing = recognizing,
+                            onHoldStart = onHoldStart,
+                            onHoldEnd = onHoldEnd,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .padding(start = 4.dp, end = 6.dp),
+                        )
+                    } else {
+                        ComposerAction(
+                            icon = LumoIcons.TextLines,
+                            label = stringResource(R.string.cmd_button),
+                            enabled = !generating,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onShowCommands,
+                        )
+                        ComposerAction(
+                            icon = LumoIcons.Picture,
+                            label = stringResource(R.string.attach_image),
+                            enabled = !generating,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onPickImages,
+                        )
+                        ComposerAction(
+                            icon = LumoIcons.Brush,
+                            label = stringResource(R.string.draw_mode),
+                            enabled = !generating,
+                            tint = if (drawMode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onToggleDrawMode,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (input.length >= WRITING_HINT_THRESHOLD) {
+                            Text(
+                                stringResource(R.string.composer_char_count, input.length),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
+                        }
+                        ComposerAction(
+                            icon = LumoIcons.Collapse,
+                            label = stringResource(R.string.composer_collapse),
+                            enabled = voicePhase == VoicePhase.Idle,
+                            tint = MaterialTheme.colorScheme.primary,
+                            onClick = onToggleExpand,
+                        )
+                    }
+                    ComposerSendSlot(
+                        recognizing = recognizing,
+                        generating = generating,
+                        canSend = canSend,
+                        onSend = onSend,
+                        onStopGeneration = onStopGeneration,
+                    )
+                }
+            } else {
+                // 折叠态：固定 56dp 单行（44dp 行 + 6dp×2 内边距）。
+                // 一行正文 + 语音 / 指令 / 图片 / 展开 + 发送印，空输入时也不留空白；
+                // 多行、字数、画笔切换都挪到「展开」后的写作态。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(COMPOSER_ROW_HEIGHT)
+                        .padding(horizontal = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CompactAction(
+                        icon = if (voiceMode) LumoIcons.Keyboard else LumoIcons.Mic,
+                        label = stringResource(
                             if (voiceMode) R.string.switch_to_keyboard else R.string.switch_to_voice,
                         ),
+                        enabled = voicePhase == VoicePhase.Idle,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onToggleVoiceMode,
                     )
-                }
-                if (!voiceMode) {
-                    IconButton(onClick = onPickImages, enabled = !generating) {
-                        Icon(Icons.Filled.Image, contentDescription = stringResource(R.string.attach_image))
-                    }
-                    IconButton(onClick = onToggleDrawMode, enabled = !generating) {
-                        Icon(
-                            Icons.Filled.Brush,
-                            contentDescription = stringResource(R.string.draw_mode),
-                            tint = if (drawMode) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (voiceMode) {
-                    ChatHoldPad(
-                        listening = listening,
-                        recognizing = recognizing,
-                        onHoldStart = onHoldStart,
-                        onHoldEnd = onHoldEnd,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                } else {
-                    BasicTextField(
-                        value = input,
-                        onValueChange = onInput,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 12.dp),
-                        enabled = !recognizing,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        maxLines = 4,
-                        decorationBox = { inner ->
-                            Box {
-                                if (input.isEmpty()) {
-                                    Text(
-                                        stringResource(
-                                            when {
-                                                recognizing -> R.string.recognizing
-                                                listening -> R.string.listening_ellipsis
-                                                drawMode -> R.string.draw_hint
-                                                else -> R.string.input_hint
-                                            },
-                                        ),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                inner()
-                            }
-                        },
-                    )
-                }
-                when {
-                    recognizing -> {
-                        CircularProgressIndicator(
+                    if (voiceMode) {
+                        ChatHoldPad(
+                            listening = listening,
+                            recognizing = recognizing,
+                            onHoldStart = onHoldStart,
+                            onHoldEnd = onHoldEnd,
                             modifier = Modifier
-                                .padding(12.dp)
-                                .size(22.dp),
-                            strokeWidth = 2.dp,
+                                .weight(1f)
+                                .height(36.dp)
+                                .padding(start = 2.dp, end = 6.dp),
+                        )
+                    } else {
+                        BasicTextField(
+                            value = input,
+                            onValueChange = onInput,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = COMPOSER_LINE_HEIGHT, max = COMPOSER_LINE_HEIGHT)
+                                .padding(horizontal = 6.dp),
+                            enabled = !recognizing,
+                            textStyle = fieldStyle,
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Default,
+                            ),
+                            decorationBox = { inner ->
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    if (input.isEmpty()) {
+                                        Text(
+                                            stringResource(placeholderRes),
+                                            style = fieldStyle,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    inner()
+                                }
+                            },
+                        )
+                        CompactAction(
+                            icon = LumoIcons.TextLines,
+                            label = stringResource(R.string.cmd_button),
+                            enabled = !generating,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onShowCommands,
+                        )
+                        CompactAction(
+                            icon = LumoIcons.Picture,
+                            label = stringResource(R.string.attach_image),
+                            enabled = !generating,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onPickImages,
+                        )
+                        // 画笔只在已经进入作画态时露出来（收尾要用它关掉），平时让位给正文。
+                        if (drawMode) {
+                            CompactAction(
+                                icon = LumoIcons.Brush,
+                                label = stringResource(R.string.draw_mode),
+                                enabled = !generating,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                onClick = onToggleDrawMode,
+                            )
+                        }
+                        CompactAction(
+                            icon = LumoIcons.Expand,
+                            label = stringResource(R.string.composer_expand),
+                            enabled = voicePhase == VoicePhase.Idle,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onToggleExpand,
                         )
                     }
-                    generating -> {
-                        IconButton(onClick = onStopGeneration) {
-                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.stop_generation))
-                        }
-                    }
-                    else -> {
-                        FilledIconButton(
-                            onClick = onSend,
-                            enabled = (input.isNotBlank() || pendingImages.isNotEmpty()) && voicePhase == VoicePhase.Idle,
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.send))
-                        }
-                    }
+                    ComposerSendSlot(
+                        recognizing = recognizing,
+                        generating = generating,
+                        canSend = canSend,
+                        onSend = onSend,
+                        onStopGeneration = onStopGeneration,
+                        compact = true,
+                    )
                 }
             }
         }
+    }
+}
+
+/** 写作态工具按钮：统一 40dp 触控与 20dp 图标，让工具行高度稳定。 */
+@Composable
+private fun ComposerAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(40.dp)) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * 折叠态小图标：34dp。
+ *
+ * IconButton 会被 Material3 的最小触控尺寸兜底撑到 48dp，五个按钮一圈就把
+ * 56dp 的单行条撑爆了，所以折叠态改用裸 clickable，尺寸由这里说了算。
+ */
+@Composable
+private fun CompactAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    enabled: Boolean,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .clickable(
+                enabled = enabled,
+                role = SemanticsRole.Button,
+                onClickLabel = label,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (enabled) tint else tint.copy(alpha = 0.38f),
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/** 输入区右侧收尾位：识别中转圈 / 生成中停止 / 常态发送印，两种态共用一份。 */
+@Composable
+private fun ComposerSendSlot(
+    recognizing: Boolean,
+    generating: Boolean,
+    canSend: Boolean,
+    onSend: () -> Unit,
+    onStopGeneration: () -> Unit,
+    compact: Boolean = false,
+) {
+    when {
+        recognizing -> {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .size(if (compact) 20.dp else 22.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        generating -> {
+            if (compact) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(role = SemanticsRole.Button, onClick = onStopGeneration),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        LumoIcons.Stop,
+                        contentDescription = stringResource(R.string.stop_generation),
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            } else {
+                FilledIconButton(onClick = onStopGeneration, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        LumoIcons.Stop,
+                        contentDescription = stringResource(R.string.stop_generation),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        else -> SendSeal(onSend = onSend, enabled = canSend)
     }
 }
 
@@ -838,7 +1260,7 @@ private fun ChatHoldPad(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (!recognizing) {
-                Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(LumoIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
@@ -855,6 +1277,10 @@ private fun ChatHoldPad(
 private fun MessageBubble(
     message: ChatMessage,
     speaking: Boolean,
+    branch: BranchEntry?,
+    onBranchPrev: (Long) -> Unit,
+    onBranchNext: (Long) -> Unit,
+    onEditBranch: (() -> Unit)?,
     onRetry: () -> Unit,
     onSpeak: () -> Unit,
     onCopy: () -> Unit,
@@ -877,7 +1303,7 @@ private fun MessageBubble(
             verticalAlignment = Alignment.Bottom,
         ) {
             if (!isUser) {
-                AvatarBubble(label = stringResource(R.string.voice_assistant).take(1), tint = MaterialTheme.colorScheme.primary)
+                SealBadge(text = "墨", size = 26.dp)
                 Spacer(Modifier.width(10.dp))
             }
             Box(
@@ -921,32 +1347,60 @@ private fun MessageBubble(
                         )
                         Spacer(Modifier.height(8.dp))
                     }
+                    val thinking = streaming && message.content.isBlank()
                     val body = when {
                         message.content.isNotBlank() && streaming -> "${message.content}▍"
                         message.content.isNotBlank() -> message.content
-                        streaming -> "▍"
                         message.attachments.isNotEmpty() -> ""
+                        // 空正文的流式回复交给下面三滴墨，不再画一根裸光标。
+                        thinking -> ""
                         else -> stringResource(R.string.empty_reply)
+                    }
+                    // 正在落笔：三滴墨呼吸；无障碍仍读「正在落笔」，不靠图形说话。
+                    if (!isUser && thinking) {
+                        val thinkingLabel = stringResource(R.string.chat_thinking)
+                        Box(
+                            modifier = Modifier
+                                .padding(bottom = 4.dp)
+                                .semantics { contentDescription = thinkingLabel },
+                        ) {
+                            InkDots()
+                        }
+                    }
+                    if (!isUser && message.reasoning.isNotBlank()) {
+                        ReasoningBlock(message.reasoning)
                     }
                     if (body.isNotBlank()) {
                         if (isUser) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-                                modifier = Modifier.fillMaxWidth(),
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .glass(
+                                        shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+                                        tone = GlassTone.Cinnabar,
+                                        level = 1f,
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
                             ) {
                                 Text(
                                     body,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                             }
                         } else {
-                            if (message.reasoning.isNotBlank()) {
-                                ReasoningBlock(message.reasoning)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .glass(
+                                        shape = RoundedCornerShape(6.dp, 20.dp, 20.dp, 20.dp),
+                                        tone = GlassTone.Paper,
+                                        level = 0.9f,
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                MarkdownText(text = body, color = MaterialTheme.colorScheme.onSurface)
                             }
-                            MarkdownText(text = body, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                     if (failed) {
@@ -969,14 +1423,37 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    // 用户消息编辑分支后也要能切回来：这里对用户消息只显示切换器，不带复制/朗读。
+                    if (isUser && !streaming && branch != null && branch.count > 1) {
+                        Row(
+                            modifier = Modifier.padding(top = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            BranchSwitcher(
+                                entry = branch,
+                                onPrev = onBranchPrev,
+                                onNext = onBranchNext,
+                            )
+                        }
+                    }
                     if (!isUser && message.content.isNotBlank() && !streaming) {
                         Row(
                             modifier = Modifier.padding(top = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            // 分支切换器：只有在同一父节点下有多条助手回复时出现。
+                            if (branch != null && branch.count > 1) {
+                                BranchSwitcher(
+                                    entry = branch,
+                                    onPrev = onBranchPrev,
+                                    onNext = onBranchNext,
+                                )
+                            }
                             IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
                                 Icon(
-                                    Icons.Filled.ContentCopy,
+                                    LumoIcons.Copy,
                                     contentDescription = stringResource(R.string.copy_message),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(15.dp),
@@ -984,7 +1461,7 @@ private fun MessageBubble(
                             }
                             IconButton(onClick = onSpeak, modifier = Modifier.size(30.dp)) {
                                 Icon(
-                                    if (speaking) Icons.Filled.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                    if (speaking) LumoIcons.Stop else LumoIcons.Speaker,
                                     contentDescription = stringResource(if (speaking) R.string.stop_reading else R.string.read_message),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp),
@@ -992,7 +1469,7 @@ private fun MessageBubble(
                             }
                             IconButton(onClick = onRetry, modifier = Modifier.size(30.dp)) {
                                 Icon(
-                                    Icons.Filled.Refresh,
+                                    LumoIcons.Refresh,
                                     contentDescription = stringResource(R.string.retry),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp),
@@ -1000,7 +1477,7 @@ private fun MessageBubble(
                             }
                             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(30.dp)) {
                                 Icon(
-                                    Icons.Filled.MoreVert,
+                                    LumoIcons.More,
                                     contentDescription = stringResource(R.string.more_actions),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp),
@@ -1010,6 +1487,15 @@ private fun MessageBubble(
                     }
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (onEditBranch != null) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.branch_edit_action)) },
+                            onClick = {
+                                menuOpen = false
+                                onEditBranch()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.copy_message)) },
                         onClick = {
@@ -1037,6 +1523,160 @@ private fun MessageBubble(
                     }
                 }
             }
+            if (isUser) {
+                Spacer(Modifier.width(10.dp))
+                SealBadge(text = "朱", size = 26.dp)
+            }
+        }
+    }
+}
+
+/**
+ * 分支切换器：`‹ 2/3 ›`。
+ *
+ * 只切 leaf，不复制消息——另一条分支的正文仍留在库里，切回去即可看到。
+ */
+@Composable
+private fun BranchSwitcher(
+    entry: BranchEntry,
+    onPrev: (Long) -> Unit,
+    onNext: (Long) -> Unit,
+) {
+    val prev = entry.previous()
+    val next = entry.next()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(end = 4.dp),
+    ) {
+        IconButton(
+            onClick = { prev?.let(onPrev) },
+            enabled = prev != null,
+            modifier = Modifier.size(28.dp),
+        ) {
+            Icon(
+                LumoIcons.ChevronLeft,
+                contentDescription = stringResource(R.string.branch_previous),
+                tint = if (prev != null) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Text(
+            stringResource(R.string.branch_switcher, entry.index + 1, entry.count),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        IconButton(
+            onClick = { next?.let(onNext) },
+            enabled = next != null,
+            modifier = Modifier.size(28.dp),
+        ) {
+            Icon(
+                LumoIcons.ChevronRight,
+                contentDescription = stringResource(R.string.branch_next),
+                tint = if (next != null) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CommandPalette(query: String, onPick: (String) -> Unit) {
+    val needle = query.trim().removePrefix("/").substringBefore(' ').lowercase()
+    val specs = ChatCommand.specs().filter { spec ->
+        needle.isEmpty() ||
+            spec.trigger.removePrefix("/").startsWith(needle) ||
+            spec.keywords.any { it.startsWith(needle) }
+    }
+    if (specs.isEmpty()) return
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            specs.forEach { spec ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(spec.insert) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        spec.trigger,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(spec.labelRes), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(spec.detailRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommandSheet(onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                stringResource(R.string.cmd_sheet_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(R.string.cmd_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            ChatCommand.specs().forEach { spec ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onPick(spec.insert)
+                            onDismiss()
+                        }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        spec.trigger,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(104.dp),
+                    )
+                    Column {
+                        Text(stringResource(spec.labelRes), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(spec.detailRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1056,39 +1696,22 @@ private fun QuickPrompts(onPick: (String) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         prompts.forEach { prompt ->
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.clickable { onPick(prompt) },
-            ) {
-                Text(
-                    prompt,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                )
-            }
+            GlassChip(text = prompt, selected = false, onClick = { onPick(prompt) })
         }
-    }
-}
-
-@Composable
-private fun AvatarBubble(label: String, tint: Color) {
-    Box(
-        modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(tint.copy(alpha = 0.18f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = tint, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 private fun ReasoningBlock(reasoning: String) {
     var expanded by remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth(0.88f).padding(bottom = 4.dp)) {
+    // 推理正文是次级文字，直接压在背景上对比度不够：套一层淡玻璃再写。
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(0.88f)
+            .padding(bottom = 4.dp)
+            .glass(shape = RoundedCornerShape(14.dp), tone = GlassTone.Paper, level = 0.85f)
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+    ) {
         TextButton(onClick = { expanded = !expanded }) {
             Text(stringResource(if (expanded) R.string.hide_reasoning else R.string.show_reasoning))
         }
@@ -1122,8 +1745,48 @@ private fun ImagePreviewDialog(path: String, onDismiss: () -> Unit) {
                 contentScale = ContentScale.Fit,
             )
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) {
-                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close_preview), tint = Color.White)
+                Icon(LumoIcons.Close, contentDescription = stringResource(R.string.close_preview), tint = Color.White)
             }
+        }
+    }
+}
+
+/** 发送：一枚朱砂圆印；空输入时压到 55% 朱砂配淡印色图标，有字才「落印」。 */
+@Composable
+private fun SendSeal(onSend: () -> Unit, enabled: Boolean) {
+    val palette = LocalLumoPalette.current
+    val container by animateColorAsState(
+        targetValue = if (enabled) palette.cinnabar else palette.cinnabar.copy(alpha = 0.55f),
+        animationSpec = tween(200),
+        label = "sendSealContainer",
+    )
+    val content by animateColorAsState(
+        targetValue = if (enabled) {
+            palette.sealInk
+        } else {
+            // 淡印色而不是灰：空态也要看得出「这是一枚印，只是还没按下去」。
+            palette.sealInk.copy(alpha = 0.75f)
+        },
+        animationSpec = tween(200),
+        label = "sendSealContent",
+    )
+    PressScale(enabled = enabled) {
+        InkRipple(
+            onClick = onSend,
+            enabled = enabled,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(container),
+        ) {
+            Icon(
+                LumoIcons.Send,
+                contentDescription = stringResource(R.string.send),
+                tint = content,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(19.dp),
+            )
         }
     }
 }

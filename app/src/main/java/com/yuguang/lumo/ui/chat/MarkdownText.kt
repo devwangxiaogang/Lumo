@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuguang.lumo.R
 import kotlinx.coroutines.launch
+import com.yuguang.lumo.ui.theme.LumoIcons
 
 /** 轻量 Markdown：粗体、行内代码、链接、列表，以及围栏代码块。 */
 @Composable
@@ -139,7 +138,7 @@ private fun CodeBlock(block: MarkdownBlock.Code, color: Color) {
                     modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.ContentCopy,
+                        imageVector = LumoIcons.Copy,
                         contentDescription = copyLabel,
                         modifier = Modifier.size(15.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -201,10 +200,37 @@ internal fun splitMarkdownBlocks(source: String): List<MarkdownBlock> {
     return blocks
 }
 
+private val HeadingMarker = Regex("""^#{1,6}\s+""")
+private val QuoteMarker = Regex("""^>\s?""")
+private val HorizontalRule = Regex("""^([-*_])\1{2,}$""")
+private val BulletMarker = Regex("""^\s*[-*+]\s+""", RegexOption.MULTILINE)
+
+/**
+ * 把模型常吐的块级记号收敛成「一看就干净」的正文：
+ * `### 标题` 拿掉井号并加粗，`> 引用` 去掉尖角，`---` 换成三点线，`- ` 换成「• 」。
+ *
+ * 只做行级替换，不碰行内粗体/代码/链接的语义；围栏代码块在此之前已由
+ * [splitMarkdownBlocks] 拆走，不会被改写。
+ */
+internal fun normalizeMarkdown(source: String): String {
+    val lines = source.lineSequence().map { raw ->
+        val trimmed = raw.trimStart()
+        when {
+            HorizontalRule.matches(trimmed) -> "· · ·"
+            HeadingMarker.containsMatchIn(trimmed) -> {
+                val title = HeadingMarker.replace(trimmed, "").trimEnd('#', ' ').trim()
+                if (title.isEmpty()) "" else "**$title**"
+            }
+            QuoteMarker.containsMatchIn(trimmed) -> QuoteMarker.replace(trimmed, "")
+            else -> raw
+        }
+    }
+    return lines.joinToString("\n").replace(BulletMarker, "• ")
+}
+
 internal fun parseMarkdown(source: String, color: Color, linkColor: Color): AnnotatedString {
-    val cleaned = source
+    val cleaned = normalizeMarkdown(source)
         .replace(Regex("""!\[([^\]]*)]\(([^)]+)\)"""), "$1 ($2)")
-        .replace(Regex("""^\s*[-*]\s+""", RegexOption.MULTILINE), "• ")
     return buildAnnotatedString {
         withStyle(SpanStyle(color = color)) {
             var i = 0

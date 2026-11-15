@@ -1,0 +1,33 @@
+<resources>
+    <!-- 1.3：多模型擂台 -->
+    <string name="arena_entry">擂台</string>
+    <string name="arena_title">多模型擂台</string>
+    <string name="arena_prompt_hint">输入同一个问题，两个模型并排作答</string>
+    <string name="arena_prompt_empty">先输入问题再开战</string>
+    <string name="arena_fight">开战</string>
+    <string name="arena_stop">停止</string>
+    <string name="arena_model_a">模型 A</string>
+    <string name="arena_model_b">模型 B</string>
+    <string name="arena_stat_ttft">首字 %1$s</string>
+    <string name="arena_stat_tokens">%1$d tokens</string>
+    <string name="arena_stat_cost">费用 %1$s</string>
+    <string name="arena_total_tokens">两栏合计 %1$d tokens</string>
+    <string name="arena_vote_a">A 更好</string>
+    <string name="arena_vote_b">B 更好</string>
+    <string name="arena_vote_tie">平局</string>
+    <string name="arena_history">历史</string>
+    <string name="arena_history_empty">还没有擂台局。输入问题，点「开战」即可。</string>
+    <string name="arena_replay">再来一局</string>
+    <string name="arena_clear_history">清空历史</string>
+    <string name="arena_clear_confirm">清空全部擂台历史？删除后无法恢复。</string>
+    <string name="arena_delete_title">删除这局擂台</string>
+    <string name="arena_delete_body">删除后无法恢复。</string>
+    <string name="arena_delete">删除</string>
+    <string name="arena_cancel">取消</string>
+    <string name="arena_side_failed">这一侧生成失败</string>
+    <string name="arena_stopped">已停止</string>
+    <string name="arena_waiting">等待第一个字…</string>
+    <string name="arena_show_reasoning">查看思考</string>
+    <string name="arena_hide_reasoning">收起思考</string>
+    <string name="arena_viewing_history">回看历史</string>
+</resources>

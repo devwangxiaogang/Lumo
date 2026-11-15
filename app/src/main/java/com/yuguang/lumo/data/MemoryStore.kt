@@ -61,6 +61,13 @@ class MemoryStore @Inject constructor(
 
     suspend fun delete(id: Long) = memoryDao.delete(id)
 
+    /** 一次性清空全部记忆（设置页「清空全部」用），返回实际删除条数。 */
+    suspend fun clearAll(): Int {
+        val count = memoryDao.allContents().size
+        memoryDao.clear()
+        return count
+    }
+
     /** 注入给模型的记忆块；开关关闭或没有记忆时返回空串。 */
     suspend fun promptBlock(): String {
         if (!settingsRepository.memoryEnabled()) return ""

@@ -50,6 +50,9 @@ class SpeechReader @Inject constructor(
     val speaking: StateFlow<String?> = speakingState.asStateFlow()
     private var job: Job? = null
     private var player: PcmPlayer? = null
+    private var streamSpeaker: StreamingSpeaker? = null
+    private var streamPlayer: PcmPlayer? = null
+    private var streamRate = 0
 
     fun toggle(
         scope: CoroutineScope,
@@ -112,6 +115,13 @@ class SpeechReader @Inject constructor(
     }
 
     fun stop() {
+        val speaker = synchronized(this) {
+            val current = streamSpeaker
+            streamSpeaker = null
+            current
+        }
+        speaker?.cancel()
+        releaseStreamPlayer()
         val cancelled = synchronized(this) {
             val currentJob = job
             job = null
@@ -125,17 +135,104 @@ class SpeechReader @Inject constructor(
         speakingState.value = null
     }
 
+    /**
+     * 边生成边朗读：返回的句柄接受增量文本，按句合成。
+     *
+     * 与 [toggle] 的区别是「不打断、可续写」：startStreaming 会先停掉正在进行的朗读，
+     * 之后逐句播放，直到 [StreamingSpeaker.finish] 或 [StreamingSpeaker.cancel]。
+     */
+    fun beginStreaming(
+        scope: CoroutineScope,
+        key: String,
+        lang: String = "",
+        minChunk: Int = SpeechSplitter.MIN_CHUNK,
+        onFailure: (SpeakFailure) -> Unit = {},
+    ): StreamingSpeaker {
+        stop()
+        lateinit var created: StreamingSpeaker
+        created = StreamingSpeaker(
+            key = key,
+            lang = lang,
+            scope = scope,
+            onFailure = onFailure,
+            minChunk = minChunk,
+            speak = { text, language -> speakStreamSentence(text, language) },
+            onIdle = {
+                synchronized(this) {
+                    if (streamSpeaker === created) {
+                        streamSpeaker = null
+                        if (speakingState.value == key) speakingState.value = null
+                    }
+                }
+                releaseStreamPlayer()
+            },
+        )
+        streamSpeaker = created
+        speakingState.value = key
+        return created
+    }
+
+    /** 流式模式下的单句合成：三条链路共用，播放器跨句复用避免反复建 AudioTrack。 */
+    private suspend fun speakStreamSentence(text: String, lang: String) {
+        val preferences = settingsRepository.speech()
+        when (SpeechRouter.tts(preferences)) {
+            SpeechRouter.TtsRoute.LOCAL -> local.speak(text)
+            SpeechRouter.TtsRoute.FREE_CLOUD -> playFree(preferences, text, lang, reusePlayer = true)
+            SpeechRouter.TtsRoute.DOUBAO -> {
+                val config = settingsRepository.get(ProviderId.DOUBAO)
+                val apiKey = config.speechApiKey.trim()
+                val appId = config.speechAppId.trim()
+                val accessToken = config.speechAccessToken.trim()
+                if (apiKey.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
+                    error(context.getString(R.string.need_speech_key_or_local))
+                }
+                playDoubao(apiKey, appId, accessToken, preferences.speaker, text, reusePlayer = true)
+            }
+        }
+    }
+
+    private fun streamPlayerFor(rate: Int): PcmPlayer {
+        val existing = synchronized(this) { streamPlayer }
+        if (existing != null && streamRate == rate) return existing
+        existing?.release()
+        val created = PcmPlayer(rate)
+        created.start()
+        synchronized(this) {
+            streamPlayer = created
+            streamRate = rate
+            player = created
+        }
+        return created
+    }
+
+    private fun releaseStreamPlayer() {
+        val current = synchronized(this) {
+            val existing = streamPlayer
+            streamPlayer = null
+            streamRate = 0
+            if (player === existing) player = null
+            existing
+        }
+        current?.release()
+    }
+
     private suspend fun playDoubao(
         apiKey: String,
         appId: String,
         accessToken: String,
         speaker: VoiceChoice,
         text: String,
+        reusePlayer: Boolean = false,
     ) {
         val voice = (if (speaker == VoiceChoice.CLONE) VoiceChoice.FEMALE else speaker).ttsSpeakerId
-        val playback = PcmPlayer(SAMPLE_RATE)
-        synchronized(this) { player = playback }
-        playback.start()
+        val playback = if (reusePlayer) {
+            streamPlayerFor(SAMPLE_RATE)
+        } else {
+            PcmPlayer(SAMPLE_RATE).also { created ->
+                synchronized(this) { player = created }
+                created.start()
+            }
+        }
         for (chunk in speechChunks(text, DOUBAO_CHUNK)) {
             ttsClient.synthesize(
                 apiKey = apiKey,
@@ -157,6 +254,7 @@ class SpeechReader @Inject constructor(
         preferences: SpeechPreferences,
         text: String,
         lang: String,
+        reusePlayer: Boolean = false,
     ) {
         val voice = if (preferences.speaker == VoiceChoice.CLONE) VoiceChoice.FEMALE else preferences.speaker
         val speech = freeTts.synthesize(
@@ -169,9 +267,14 @@ class SpeechReader @Inject constructor(
             local.speak(text)
             return
         }
-        val playback = PcmPlayer(speech.sampleRate)
-        synchronized(this) { player = playback }
-        playback.start()
+        val playback = if (reusePlayer) {
+            streamPlayerFor(speech.sampleRate)
+        } else {
+            PcmPlayer(speech.sampleRate).also { created ->
+                synchronized(this) { player = created }
+                created.start()
+            }
+        }
         playback.write(speech.pcm)
     }
 

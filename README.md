@@ -1,4 +1,4 @@
-﻿# 语光 · Lumo
+# 语光 · Lumo
 
 <img src="docs/screenshots/app-icon.png" width="88" align="right" alt="语光图标">
 
@@ -7,7 +7,7 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 `Android 7.0+` · `Kotlin 2.4` · `Jetpack Compose` · `Material 3` · `MIT`
 
 - 包名：`com.yuguang.lumo`
-- 版本：`1.1 (versionCode 2)`
+- 版本：`1.3 (versionCode 4)`
 
 ---
 
@@ -21,11 +21,21 @@ Android 上的 AI 助手：和 DeepSeek、豆包（火山方舟）对话，做�
 |---|---|---|
 | <img src="docs/screenshots/voice-light.webp" width="240"> | <img src="docs/screenshots/voice-dark.webp" width="240"> | <img src="docs/screenshots/settings.webp" width="240"> |
 
-| 语音聆听中 | 首次引导 |
+| 外观 · 山水画廊 | 首次引导 |
 |---|---|
-| <img src="docs/screenshots/voice-listening.webp" width="240"> | <img src="docs/screenshots/onboarding.webp" width="240"> |
+| <img src="docs/screenshots/appearance.webp" width="240"> | <img src="docs/screenshots/onboarding.webp" width="240"> |
 
-底部三个 Tab：**对话 / 翻译 / 语音**，右上角头像进入设置。语音页与所有页面一样跟随系统深色模式。
+底部三个 Tab：**对话 / 翻译 / 语音**，右上角头像进入设置。每一页都挂一幅公版古画作背景
+（克利夫兰艺术博物馆 CC0，8 幅山水，日/夜各一套），正文落在磨砂宣纸上；动作只有墨、印、云三种语言。
+视觉与动效的完整说明见 [docs/UI-REDESIGN.md](docs/UI-REDESIGN.md)。
+
+### 应用图标
+
+<img src="docs/screenshots/app-icon-states.png" width="520">
+
+宣纸底上落一枚朱砂方印，印白是宋体的「光」，界格一道细边——与首页左上角的「語光」印同构，
+放大到 512 是印，缩到 48dp 仍读得出字。方形、圆形、以及 Android 13+ 的主题图标（单色层）
+都出自同一个 [tools/build_icon.py](tools/build_icon.py)，改一个参数就能重出全套。
 
 ---
 
@@ -108,6 +118,9 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 - **全文检索**：搜索框同时检索标题与消息正文；中文走子串匹配、英文走 FTS 索引并高亮片段，点结果直接进会话。
 - **长期记忆**（默认关闭）：开启后助手在对话结束时提炼你的偏好与事实存到本机，后续对话自动参考。
 - **本地工具**（收费档）：模型可调用 `get_time` / `calculate` / `fetch_url`（含 SSRF 防护）/ `search_my_chats`，每轮最多 3 次。
+- **边生成边朗读**（1.2）：回复还在流式输出时就按句朗读，不必等整段结束；设置 → 语音与朗读、对话顶栏菜单均可开关，默认关闭。
+- **斜杠指令**（1.2）：输入 `/draw`、`/translate`、`/summary`、`/model`、`/voice`、`/new`、`/help`（支持中文别名）在客户端直接执行，不消耗额度；输入 `/` 即出现指令面板。
+- **图片文字翻译**（1.2）：翻译页「图片」标签选一张菜单 / 路牌 / 说明书，逐行给出原文与译文，可复制、可朗读，结果写入翻译记录。
 
 #### 识图与生图
 
@@ -171,7 +184,7 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 
 | 能力 | 免费实现 | 边界 |
 |---|---|---|
-| 对话 | Kilo 公共免费池 `https://ai-gateway.kilo.ai/api/v1` | 12 个 `:free` 模型；429 / 模型下线自动降级到下一个；思考默认关闭 |
+| 对话 | Kilo 公共免费池 `https://ai-gateway.kilo.ai/api/v1` | 10 个实测可用模型（2026-11 逐个验证，见 [免费模型实测](docs/FREE-MODELS.md)）；429 / 模型下线自动降级到下一个；思考默认关闭 |
 | 文字翻译 | 免费池大模型直译 → MyMemory 兜底 | 仅 中/英/日/韩/俄 |
 | 朗读 | 百度 `gettts` → 有道 `dictvoice` → 本机 TTS | 仅 5 语种；单块 ≤400 字；MP3 本地解码 |
 | 语音识别 | 系统识别器 → 免费池 omni 模型（`input_audio`） | **试验级**，准确率明显低于豆包 |
@@ -179,11 +192,56 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 | 语音对话 | 逐轮「按住说话 → 识别 → 对话 → 朗读」 | 无 Seeduplex 级实时 |
 | 生图 / 复刻原声 | 不支持 | 界面置灰并说明 |
 
-**注意**：免费车道全部是公开网页/公共网关接口，可能被限速，请求可能被上游记录用于改进服务，请勿发送敏感内容。默认档位仍是收费档，升级后老用户体验不变。
+**注意**：免费车道全部是公开网页/公共网关接口，按 IP 限流（约 200 次/小时），请求可能被上游记录用于改进服务，请勿发送敏感内容。默认档位仍是收费档，升级后老用户体验不变。
 
 ### 一键自检
 
-设置 → 语音与朗读 → 免费链路 → **自检免费链路**，依次探测「对话模型 / 翻译 / 朗读」三个部件，各自显示 ✓/✕ 与耗时。目的是在一处看完哪一环不通，而不是逐页试错。
+设置 → 语音与朗读 → 免费链路 → **自检免费链路**：依次探测「对话模型 / 翻译 / 朗读」三个部件，再逐个探测免费池里的模型（降级链、视觉链与默认模型），各自显示 ✓/✕ 与耗时。目的是在一处看完哪一环不通，而不是逐页试错。
+
+### 模型健康（失败冷却）
+
+免费池的可用性变化比发版快，所以失败会自己记录：某个模型失败一次后，24 小时内请求优先走别的模型，成功一次立即解除。设置页的「模型健康」卡片列出当前被跳过的模型与原因，并可一键清空。全部模型都在冷却时会退回原链，功能不会因此「静默失效」。
+
+### 免费模型清单
+
+免费池逐个体测的结果、剔除原因与替代建议记录在 [docs/FREE-MODELS.md](docs/FREE-MODELS.md)。默认模型已从自动路由换成实测最快的 `nvidia/nemotron-3.5-lightning:free`；`kilo-auto/free` 因匿名额度（每 IP 200 次/小时）常年 429，退到降级链末尾。
+
+### 多模型擂台（1.3）
+
+- 对话首页快捷入口进「擂台」：同一个问题，两个模型并排流式作答。
+- 每栏实时显示**首字延迟 / 输出 token / 估算费用**，思考过程可展开；两栏合计 token 显示在标题下。
+- 可投「A 更好 / 平局 / B 更好」，投票随历史保存；历史保留最近 50 局，长按删除。
+- 单侧失败只影响该栏；停止后已出字的一侧仍可回看。
+
+### 会话分支（1.3）
+
+- 长按**用户消息** →「编辑并分支」：从那条消息的父节点长出新分支，原回答完整保留。
+- 助手消息重试也不再删旧回复：同一父节点下的多条回复用 `‹ 2/3 ›` 切换器来回切换，历史随分支变化。
+- 导出 Markdown / HTML 只导出当前激活分支；ZIP 备份保留整棵消息树。
+
+### 用量洞察与自动标题（1.3）
+
+- 设置 → 数据 →「用量统计」：总 token、估算费用、会话数，近 14 天堆叠柱状图与按模型排行；免费档恒 ¥0.00。
+- **AI 自动标题**：首轮回复结束后异步生成 6–12 字标题，替换「首条消息截断」；设置 → 语音与朗读可关闭。
+
+### 面对面双向同传（1.3 → 1.4 重做）
+
+- 翻译页「面对面」：手机放桌上，上方「对方」大卡、中间朱砂圆印麦克风、下方「我方」大卡；麦克风开着时屏幕不会熄灭。
+- **引擎与模型可见**：顶部一行写着这次用的是「豆包同声传译 2.0」还是「免费链路」，点开是明细——
+  收费档列端到端 AST（`volc.service_type.10053`）与音色；免费档列「语音识别 / 翻译链 / 朗读」三段各自的后端
+  （翻译链是 `nemotron-3.5-lightning` → `dots-3-note-preview` → `particle-1`，按顺序取首个可用）与 3–9 秒延迟。
+- 每句话按语言自动归到一侧，译文放大显示，可朗读、可复制；未定稿的句子不再显示「…」，
+  而是按缺口显示「识别中 / 翻译中」+ 呼吸墨点，免费档同时标出预计延迟。
+- 中间一排：麦克风 + 状态 + 记录入口；底部「本次共 N 句 · 查看全部」打开**本次对话**面板（逐句朗读 / 复制 / 清空）。
+- 交换方向不再丢句：正在听的那半句会先按旧方向定格，再重启流；结束时按侧各存一条翻译记录（历史里标为「面对面」）。
+- 性能（同一段 20 秒实时会话实测）：`dumpsys gfxinfo` 1143 帧 / 掉帧 2 帧（0.17%），GPU 中位 6 ms。
+  为此把 PCM 音频块从 `withMutableSnapshot` 里摘出去（每秒约 50 次快照只为丢给播放器），
+  并让免费链路的朗读与下一段识别并行（原来合成一段要 1–2 秒、串在主循环里把整条链路往后推）。
+
+### 功能提案与路线图
+
+后续想法（MCP 客户端、本地知识库、桌面小组件等）与取舍记录在 [docs/FEATURES.md](docs/FEATURES.md)。
+1.3 的设计稿与验收记录见 [docs/V1.3_PLAN.md](docs/V1.3_PLAN.md) 与 [docs/V1.3_REPORT.md](docs/V1.3_REPORT.md)。
 
 ### 关于本地免费模型插件
 
@@ -202,7 +260,7 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 | DeepSeek | `https://api.deepseek.com` | 对话（DeepSeek 模型），部分模型支持识图 |
 | 豆包（火山方舟） | `https://ark.cn-beijing.volces.com/api/v3` | 对话、模型目录、Seed Translation、Seedream 生图 |
 | 豆包语音 | 豆包语音控制台 | 语音识别、同声传译、朗读、实时语音对话（Seeduplex） |
-| 免费模型 | `https://ai-gateway.kilo.ai/api/v1` | 免密钥对话（12 个免费模型） |
+| 免费模型 | `https://ai-gateway.kilo.ai/api/v1` | 免密钥对话（10 个实测可用模型） |
 | 自定义端点 | 自填 | 任意 OpenAI 兼容服务 |
 
 - 豆包语音支持新版 `X-Api-Key`，也兼容旧版 **AppID + Access Token** 鉴权（朗读 / 同传 / 识别）。
@@ -285,7 +343,7 @@ app/src/main/java/com/yuguang/lumo/
 
 ## 测试
 
-- 单元测试：10 个文件、58 个用例（SSE 解码与思考字段别名、流式渲染、协议解析、历史预算、语言规则、模型能力、档位路由、免费语种边界）。
+- 单元测试：13 个文件、82 个用例（SSE 解码与思考字段别名、流式渲染、协议解析、历史预算、语言规则、模型能力、档位路由、免费语种边界、朗读切句、斜杠指令、图片译文解析）。
 - 仪器测试：数据库迁移 2 → 3 与 4 → 5（含 FTS 回填与触发器，真机）。
 
 ```bash
@@ -327,7 +385,7 @@ An Android AI assistant: chat with DeepSeek and Doubao (Volcengine Ark), transla
 `Android 7.0+` · `Kotlin 2.4` · `Jetpack Compose` · `Material 3` · `MIT`
 
 - Package: `com.yuguang.lumo`
-- Version: `1.1 (versionCode 2)`
+- Version: `1.2 (versionCode 3)`
 
 ## Preview
 
@@ -339,6 +397,23 @@ An Android AI assistant: chat with DeepSeek and Doubao (Volcengine Ark), transla
 |---|---|---|
 | <img src="docs/screenshots/voice-light.webp" width="240"> | <img src="docs/screenshots/voice-dark.webp" width="240"> | <img src="docs/screenshots/settings.webp" width="240"> |
 
+| Appearance · landscape gallery | First-run onboarding |
+|---|---|
+| <img src="docs/screenshots/appearance.webp" width="240"> | <img src="docs/screenshots/onboarding.webp" width="240"> |
+
+Every screen sits on a public-domain Chinese landscape painting (Cleveland Museum of Art, CC0 —
+8 scenes, day and night), with the content resting on frosted rice-paper glass. See
+[docs/UI-REDESIGN.md](docs/UI-REDESIGN.md) for the palette, motion table and per-screen notes.
+
+### App icon
+
+<img src="docs/screenshots/app-icon-states.png" width="520">
+
+A cinnabar seal pressed onto rice paper: the glyph is a Song-style 光, framed by a thin
+seal border — the same mark as the 語光 seal in the app's top-left corner. Square, round and
+the Android 13+ themed monochrome layer all come from one generator,
+[tools/build_icon.py](tools/build_icon.py).
+
 ## Features
 
 ### Two tiers: paid (Doubao) and free
@@ -347,7 +422,7 @@ A **speech tier** switch keeps the two implementations apart. `PAID` is the 1.0 
 
 | Capability | Free implementation | Limits |
 |---|---|---|
-| Chat | Kilo public free pool (`ai-gateway.kilo.ai`) | 12 `:free` models; falls back to the next model on 429 / model-removed before any answer text |
+| Chat | Kilo public free pool (`ai-gateway.kilo.ai`) | 10 models verified working (2026-11, see [free-model report](docs/FREE-MODELS.md)); falls back to the next model on 429 / model-removed before any answer text |
 | Text translation | Free-pool LLM → MyMemory fallback | zh/en/ja/ko/ru only |
 | Read-aloud | Baidu `gettts` → Youdao `dictvoice` → device TTS | 5 languages, ≤400 chars per chunk, MP3 decoded locally |
 | Recognition | System recognizer → free-pool omni model (`input_audio`) | Experimental; noticeably less accurate than Doubao |
@@ -371,6 +446,9 @@ The free tier uses public endpoints: it may be rate-limited and content may be l
 - Full-text search across message bodies (FTS4 for Latin queries, LIKE for CJK), jumping straight to the conversation.
 - Optional long-term memory: off by default; when enabled, the assistant distils durable preferences after a turn and references them later. All local.
 - Local tool registry for paid-tier models: `get_time`, `calculate`, `fetch_url` (SSRF-guarded), `search_my_chats`, up to 3 rounds per turn.
+- **Streaming read-aloud** (1.2): speaks the reply sentence by sentence while it is still streaming. Toggle in Settings → Voice, or from the chat overflow menu; off by default.
+- **Slash commands** (1.2): `/draw`, `/translate`, `/summary`, `/model`, `/voice`, `/new`, `/help` (Chinese aliases included) run on the client and cost no tokens; typing `/` opens the palette.
+- **Photo text translation** (1.2): pick a menu, sign or manual in the new Photo tab and get line-by-line source and translation, with copy and read-aloud; results are saved to translation records.
 
 ### Translation
 
@@ -378,6 +456,14 @@ The free tier uses public endpoints: it may be rate-limited and content may be l
 - Language-pair card, swap, automatic source-language matching from typed or recognized text.
 - Translation records grouped by day with search, detail view, copy, read-aloud and delete.
 - Microphone echo suppression while the interpreted speech is playing.
+
+### Face to face (1.3, reworked in 1.4)
+
+- Put the phone on the table: their card on top, a cinnabar seal mic in the middle, your card at the bottom. The screen stays awake while the mic is open.
+- **The engine is visible**: the header names the engine in use — Doubao AST 2.0 (`volc.service_type.10053`, end-to-end) or the free pipeline. Tapping it lists the actual models: ASR, the free translation chain (`nemotron-3.5-lightning` → `dots-3-note-preview` → `particle-1`, first healthy wins), speech synthesis and the expected 3–9 s latency.
+- Each utterance is routed to the correct side by language; the translation is shown large and can be read aloud or copied. Unfinished turns show "Recognizing / Translating" with breathing ink dots instead of a bare ellipsis.
+- A session panel lists every turn (read aloud, copy, clear); swapping direction keeps the half-spoken turn instead of dropping it.
+- Measured on a 20 s live session: 1143 frames, 2 janky (0.17%), 6 ms median GPU. Audio chunks now bypass `withMutableSnapshot`, and free-pipeline speech synthesis runs in parallel with the next segment's recognition.
 
 ### Realtime voice (Seeduplex)
 
@@ -467,7 +553,7 @@ The graph comes from static analysis. Relationships involving Hilt/Room generate
 
 ## Testing
 
-- 10 unit-test files / 58 cases (SSE decoding incl. reasoning aliases, streaming overlay, wire protocol, history budget, language rules, model capabilities, tier routing, free-tier language limits).
+- 13 unit-test files / 82 cases (SSE decoding incl. reasoning aliases, streaming overlay, wire protocol, history budget, language rules, model capabilities, tier routing, free-tier language limits, speech sentence splitting, slash commands, photo-line parsing).
 - Instrumented migration tests 2 → 3 and 4 → 5 (FTS backfill and triggers).
 
 ```bash

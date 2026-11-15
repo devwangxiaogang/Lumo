@@ -11,6 +11,8 @@ import com.yuguang.lumo.domain.model.TtsEngine
 import com.yuguang.lumo.domain.model.VoiceChoice
 import com.yuguang.lumo.domain.model.freeLivePairError
 import com.yuguang.lumo.domain.model.freeSpeakError
+import com.yuguang.lumo.domain.model.freeForcedReasoning
+import com.yuguang.lumo.domain.model.freeModelBlocklist
 import com.yuguang.lumo.domain.model.freeTtsSupports
 import com.yuguang.lumo.domain.model.livePairError
 import org.junit.Assert.assertEquals
@@ -165,6 +167,27 @@ class FreeLaneTest {
     @Test
     fun freeProviderShipsStaticFallbackModels() {
         assertTrue(ProviderId.FREE.models.isNotEmpty())
-        assertEquals("kilo-auto/free", ProviderId.FREE.defaultModel)
+        // 默认模型必须是实测最快且稳定的那个：自动路由 kilo-auto 对匿名用户长期 429。
+        assertEquals("nvidia/nemotron-3.5-lightning:free", ProviderId.FREE.defaultModel)
+        assertFalse(ProviderId.FREE.models.any { it.id == "inclusionai/ling-3.2-flash:free" })
+        assertFalse(ProviderId.FREE.models.any { it.id == "nvidia/nemotron-3-ultra-550b-a55b:free" })
+    }
+
+    @Test
+    fun forcedReasoningModelsAreNotBlocklistedButListed() {
+        // 强制思考 ≠ 不可用：它们只是不能接受 reasoning.enabled=false。
+        freeForcedReasoning.forEach { id ->
+            assertFalse("$id 不该同时进黑名单", id in freeModelBlocklist)
+        }
+        assertTrue("baidu/ernie-5.5-flash-preview:free" in freeForcedReasoning)
+    }
+
+    @Test
+    fun blocklistedModelsNeverShipInStaticList() {
+        // 黑名单是「远端目录兜底过滤」，静态清单也不该再列出它们。
+        freeModelBlocklist.forEach { blocked ->
+            assertTrue(blocked, ProviderId.FREE.models.none { it.id == blocked })
+        }
+        assertTrue(freeModelBlocklist.isNotEmpty())
     }
 }

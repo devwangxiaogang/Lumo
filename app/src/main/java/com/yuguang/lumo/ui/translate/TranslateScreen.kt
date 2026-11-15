@@ -3,18 +3,21 @@ package com.yuguang.lumo.ui.translate
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -32,6 +35,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,10 +50,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -59,19 +66,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Notes
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -100,6 +94,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,10 +105,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.toClipEntry
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -126,12 +124,28 @@ import com.yuguang.lumo.domain.model.liveLanguages
 import com.yuguang.lumo.domain.model.livePairError
 import com.yuguang.lumo.domain.model.textLanguages
 import com.yuguang.lumo.domain.model.translationModels
+import coil.compose.AsyncImage
 import com.yuguang.lumo.ui.chat.SpeechInput
 import com.yuguang.lumo.ui.chat.VoicePhase
+import com.yuguang.lumo.ui.components.BreathingSeal
+import com.yuguang.lumo.ui.components.ErrorCard
+import com.yuguang.lumo.ui.components.GlassCard
+import com.yuguang.lumo.ui.components.GlassChip
+import com.yuguang.lumo.ui.components.GlassTone
+import com.yuguang.lumo.ui.components.InkDivider
+import com.yuguang.lumo.ui.components.InkRipple
+import com.yuguang.lumo.ui.components.SealedSectionTitle
+import com.yuguang.lumo.ui.components.glass
 import com.yuguang.lumo.ui.languageLabel
 import com.yuguang.lumo.ui.shell.AppSection
 import com.yuguang.lumo.ui.shell.SectionScaffold
 import com.yuguang.lumo.ui.shortLanguageLabel
+import com.yuguang.lumo.ui.theme.LocalLumoPalette
+import com.yuguang.lumo.ui.theme.LocalMotionEnabled
+import com.yuguang.lumo.ui.theme.LumoIcons
+import com.yuguang.lumo.ui.theme.LumoMotion
+import com.yuguang.lumo.ui.theme.LumoType
+import com.yuguang.lumo.ui.theme.SceneryCatalog
 import com.yuguang.lumo.ui.storedVoiceLabel
 import com.yuguang.lumo.ui.translationModelLabel
 import java.text.SimpleDateFormat
@@ -147,19 +161,26 @@ fun TranslateScreen(
     viewModel: TranslateViewModel = hiltViewModel(),
 ) {
     val state = viewModel.state
+    val sampleSentence = stringResource(R.string.translate_sample_sentence)
     val clipboard = LocalClipboard.current
     val clipLabel = stringResource(R.string.clip_translation)
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf<PickTarget?>(null) }
     var browse by remember { mutableStateOf<RecordBrowse?>(null) }
     val liveActive = state.livePhase == LivePhase.Connecting || state.livePhase == LivePhase.Listening
-    val recordKind = if (state.tab == TranslateTab.Live) "LIVE" else "TEXT"
+    val faceActive = state.facePhase == LivePhase.Connecting || state.facePhase == LivePhase.Listening
+    val recordKind = when (state.tab) {
+        TranslateTab.Live -> "LIVE"
+        TranslateTab.Text -> "TEXT"
+        TranslateTab.Photo -> "PHOTO"
+        TranslateTab.Face -> "FACE"
+    }
     val tabRecords = state.records.filter { it.kind == recordKind }
     LaunchedEffect(state.tab) { browse = null }
     LaunchedEffect(state.livePhase) {
         if (liveActive) browse = null
     }
-    BackHandler(enabled = browse != null || liveActive) {
+    BackHandler(enabled = browse != null || liveActive || faceActive) {
         when {
             browse != null -> {
                 browse = when (val current = browse) {
@@ -167,6 +188,7 @@ fun TranslateScreen(
                     else -> null
                 }
             }
+            faceActive -> viewModel.stopFace()
             liveActive -> viewModel.stopLive()
         }
     }
@@ -175,21 +197,33 @@ fun TranslateScreen(
         onDispose { if (openRecordId != null) viewModel.stopRecordSpeech() }
     }
     var pendingTextMic by remember { mutableStateOf(false) }
+    var pendingFaceMic by remember { mutableStateOf(false) }
+    val pickPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> viewModel.selectPhoto(uri) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         when {
             !granted && pendingTextMic -> {
                 pendingTextMic = false
                 viewModel.denyTextMicrophone()
             }
+            !granted && pendingFaceMic -> {
+                pendingFaceMic = false
+                viewModel.denyMicrophone()
+            }
             !granted -> viewModel.denyMicrophone()
             pendingTextMic -> pendingTextMic = false
+            pendingFaceMic -> {
+                pendingFaceMic = false
+                viewModel.startFace()
+            }
             else -> viewModel.toggleLive()
         }
     }
     val view = LocalView.current
-    DisposableEffect(state.livePhase) {
+    DisposableEffect(liveActive, faceActive) {
         val window = view.context.findActivity().window
-        if (liveActive) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (liveActive || faceActive) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
     DisposableEffect(Unit) {
@@ -208,7 +242,7 @@ fun TranslateScreen(
                     onClick = { if (!liveActive) browse = RecordBrowse.All },
                     enabled = !liveActive,
                 ) {
-                    Icon(Icons.Filled.History, contentDescription = stringResource(R.string.history))
+                    Icon(LumoIcons.Clock, contentDescription = stringResource(R.string.history))
                 }
             }
         },
@@ -256,6 +290,14 @@ fun TranslateScreen(
                             viewModel.dismissMessage()
                         },
                         onDelete = viewModel::deleteRecord,
+                        onRetakePhoto = {
+                            // 回到图片翻译页并直接拉起选图器：用户点「重新选一张」就是想马上再拍。
+                            browse = null
+                            viewModel.selectTab(TranslateTab.Photo)
+                            pickPhoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
                         onReuse = { record ->
                             viewModel.reuseTextRecord(record)
                             browse = null
@@ -283,7 +325,56 @@ fun TranslateScreen(
                             }
                         },
                         onSpeak = { text -> viewModel.speak("live-caption", text) },
+                        onSpeakRecord = { record -> viewModel.speak("record:${record.id}", record.targetText) },
                         onOpenRecord = { record -> browse = RecordBrowse.Detail(record.id, fromAll = false) },
+                        onTry = {
+                            // 示例句直接带到文本模式：用户不用再想「翻什么」。
+                            viewModel.updateInput(sampleSentence)
+                            viewModel.selectTab(TranslateTab.Text)
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (state.tab == TranslateTab.Photo) {
+                    PhotoStage(
+                        state = state,
+                        message = state.message,
+                        onPick = {
+                            pickPhoto.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        onTranslate = viewModel::translatePhoto,
+                        onCopy = { text ->
+                            scope.launch {
+                                clipboard.setClipEntry(ClipData.newPlainText(clipLabel, text).toClipEntry())
+                            }
+                        },
+                        onSpeak = { text -> viewModel.speak("photo-line", text) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (state.tab == TranslateTab.Face) {
+                    FaceToFaceStage(
+                        state = state,
+                        onStart = {
+                            if (ContextCompat.checkSelfPermission(view.context, Manifest.permission.RECORD_AUDIO) ==
+                                PackageManager.PERMISSION_GRANTED
+                            ) {
+                                viewModel.startFace()
+                            } else {
+                                pendingFaceMic = true
+                                permission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        onStop = viewModel::stopFace,
+                        onSwap = viewModel::swapFace,
+                        onToggleLock = viewModel::toggleFaceLock,
+                        onSpeak = { text -> viewModel.speak("face-line", text) },
+                        onCopy = { text ->
+                            scope.launch {
+                                clipboard.setClipEntry(ClipData.newPlainText(clipLabel, text).toClipEntry())
+                            }
+                        },
+                        onClear = viewModel::clearFaceTurns,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
@@ -308,6 +399,7 @@ fun TranslateScreen(
                             viewModel.dismissMessage()
                         },
                         onOpenRecord = { record -> browse = RecordBrowse.Detail(record.id, fromAll = false) },
+                        onSpeakRecord = { record -> viewModel.speak("record:${record.id}", record.targetText) },
                         onVoicePhase = viewModel::setVoicePhase,
                         onVoiceResult = viewModel::applyVoiceInput,
                         onVoiceError = viewModel::reportVoiceError,
@@ -327,6 +419,15 @@ fun TranslateScreen(
     }
 }
 
+/** 模式 chip 高度：44dp 够拇指扫到，也给 22dp 图标留出上下各 11dp。 */
+private val MODE_CHIP_HEIGHT = 44.dp
+
+/**
+ * 四段模式：一行可横滑的玻璃 chip。
+ *
+ * 原来四段等分整宽，图标与文字被挤在 88dp 里；改成按内容排布 + 横滑后，
+ * 每段各自拿到 22dp 图标 + 13sp 短标签的呼吸，选中态用朱砂描边加一道底印点出。
+ */
 @Composable
 private fun TranslateModeSwitcher(
     selected: TranslateTab,
@@ -334,64 +435,55 @@ private fun TranslateModeSwitcher(
     modifier: Modifier = Modifier,
 ) {
     val tabs = listOf(
-        Triple(TranslateTab.Live, R.string.tab_live, Icons.Filled.Mic),
-        Triple(TranslateTab.Text, R.string.tab_text, Icons.AutoMirrored.Filled.Notes),
+        // 四段各用一枚墨线图标：话筒 / 两行字 / 画框 / 脸。
+        Triple(TranslateTab.Live, R.string.tab_live, LumoIcons.Realtime),
+        Triple(TranslateTab.Text, R.string.tab_text, LumoIcons.TextLines),
+        Triple(TranslateTab.Photo, R.string.tab_photo, LumoIcons.Picture),
+        Triple(TranslateTab.Face, R.string.tab_face, LumoIcons.Face),
     )
-    val selectedIndex = if (selected == TranslateTab.Live) 0 else 1
-    BoxWithConstraints(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(4.dp)
+            .horizontalScroll(rememberScrollState())
             .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        val segmentWidth = maxWidth / tabs.size
-        val indicatorOffset by animateDpAsState(
-            targetValue = segmentWidth * selectedIndex,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
-            label = "modeIndicator",
-        )
-        Box(
-            modifier = Modifier
-                .offset(x = indicatorOffset)
-                .width(segmentWidth)
-                .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)),
-        )
-        Row(modifier = Modifier.fillMaxSize()) {
-            tabs.forEach { (tab, labelRes, icon) ->
-                ModeSegment(
-                    label = stringResource(labelRes),
-                    icon = icon,
-                    selected = tab == selected,
-                    onClick = { onSelect(tab) },
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
+        tabs.forEach { (tab, labelRes, icon) ->
+            ModeChip(
+                label = stringResource(labelRes),
+                icon = icon,
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+            )
         }
     }
 }
 
 @Composable
-private fun ModeSegment(
+private fun ModeChip(
     label: String,
     icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val color = if (selected) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row(
-        modifier = modifier
+    val palette = LocalLumoPalette.current
+    val shape = RoundedCornerShape(22.dp)
+    val tint = if (selected) palette.cinnabar else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = Modifier
+            .height(MODE_CHIP_HEIGHT)
+            .glass(shape = shape, level = if (selected) 0.9f else 0.72f)
+            .background(
+                color = if (selected) palette.cinnabar.copy(alpha = 0.10f) else Color.Transparent,
+                shape = shape,
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) palette.cinnabar.copy(alpha = 0.85f) else palette.glassBorder,
+                shape = shape,
+            )
+            .clip(shape)
             .selectable(
                 selected = selected,
                 onClick = onClick,
@@ -399,24 +491,35 @@ private fun ModeSegment(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
             ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = color,
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = tint)
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = tint,
+                maxLines = 1,
+            )
+        }
+        // 选中：底沿一道 1.5dp 朱砂底印，像 chip 下压了半枚印。
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 5.dp)
+                    .width(22.dp)
+                    .height(1.5.dp)
+                    .background(palette.cinnabar, RoundedCornerShape(1.dp)),
+            )
+        }
     }
 }
 
@@ -431,7 +534,9 @@ private fun LiveStage(
     onToggle: () -> Unit,
     onCopy: (String) -> Unit,
     onSpeak: (String) -> Unit,
+    onSpeakRecord: (TranslationEntity) -> Unit,
     onOpenRecord: (TranslationEntity) -> Unit,
+    onTry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val active = state.livePhase == LivePhase.Connecting || state.livePhase == LivePhase.Listening
@@ -455,74 +560,107 @@ private fun LiveStage(
     }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (active) {
-            Text(
-                "${languageLabel(state.liveSourceLang, liveLanguages)} → ${languageLabel(state.liveTargetLang, liveLanguages)} · ${stringResource(state.liveVoice.labelRes)}",
-                style = MaterialTheme.typography.titleMedium,
+            LiveSealStage(
+                source = shortLanguageLabel(state.liveSourceLang),
+                target = shortLanguageLabel(state.liveTargetLang),
+                caption = stringResource(state.liveVoice.labelRes),
             )
-            LiveStatusRow(phase = state.livePhase, hearing = state.hearing)
         } else {
-            LanguageRow(
+            // 语言与音色收进同一张卡：中文 ⇄ 英语 在左，女声小 chip 挂在卡右端。
+            LanguageCard(
                 source = languageLabel(state.liveSourceLang, liveLanguages),
                 target = languageLabel(state.liveTargetLang, liveLanguages),
+                trailing = stringResource(state.liveVoice.labelRes),
                 onSource = onPickSource,
                 onTarget = onPickTarget,
                 onSwap = onSwap,
+                onTrailing = onPickVoice,
+                hint = if (state.liveVoice == VoiceChoice.CLONE) stringResource(R.string.clone_hint) else null,
             )
-            SettingLink(
-                label = stringResource(R.string.voice_label, stringResource(state.liveVoice.labelRes)),
-                onClick = onPickVoice,
-            )
-            if (state.liveVoice == VoiceChoice.CLONE) {
-                Text(
-                    stringResource(R.string.clone_hint),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
         }
-        Column(
-            modifier = Modifier.weight(1f).verticalScroll(scroll),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        // 舞台吃掉标题栏与主按钮之间的全部空间：不再固定 420dp，小屏也不会把按钮挤出屏幕。
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) {
-            if (empty && !active) {
-                LiveEmptyHint(freeTier = freeTier)
-                LastRecordHint(records = records, onOpen = onOpenRecord)
-            } else if (empty && active) {
-                LiveEmptyHint(listening = true, freeTier = freeTier)
-            } else {
-                CaptionCard(stringResource(R.string.source_label), state.sourceCaption, state.sourcePartial, compact = true)
-                CaptionCard(stringResource(R.string.target_label), state.targetCaption, state.targetPartial, compact = false)
-                if (active) {
-                    LiveWave()
-                }
-                if (state.livePhase == LivePhase.Ended && state.liveSaved) {
-                    Text(
-                        stringResource(R.string.saved),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+            val compact = maxHeight < 380.dp
+            when {
+                empty && !active -> Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    LiveStageIdle(
+                        freeTier = freeTier,
+                        compact = compact,
+                        modifier = Modifier.weight(1f),
                     )
-                    Row(modifier = Modifier.align(Alignment.End)) {
-                        IconButton(onClick = { onCopy(state.targetCaption) }) {
-                            Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy_translation))
-                        }
-                        if (state.targetCaption.isNotBlank()) {
-                            IconButton(onClick = { onSpeak(state.targetCaption) }) {
-                                Icon(
-                                    if (state.speakingKey == "live-caption") Icons.Filled.Stop else Icons.AutoMirrored.Filled.VolumeUp,
-                                    contentDescription = stringResource(R.string.read_translation),
-                                )
+                    LastRecordHint(
+                        records = records,
+                        onOpen = onOpenRecord,
+                        onSpeak = onSpeakRecord,
+                        onTry = onTry,
+                    )
+                }
+                empty && active -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LiveEmptyHint(listening = true, freeTier = freeTier)
+                }
+                else -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scroll),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CaptionCard(stringResource(R.string.source_label), state.sourceCaption, state.sourcePartial, compact = true)
+                    CaptionCard(stringResource(R.string.target_label), state.targetCaption, state.targetPartial, compact = false)
+                    if (active) {
+                        LiveWave()
+                    }
+                    if (state.livePhase == LivePhase.Ended && state.liveSaved) {
+                        // 「已保存」这一行连同复制 / 朗读一起压在同一枚玻璃条上。
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .glass(shape = RoundedCornerShape(999.dp), level = 0.85f)
+                                .padding(start = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.saved),
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            IconButton(onClick = { onCopy(state.targetCaption) }) {
+                                Icon(LumoIcons.Copy, contentDescription = stringResource(R.string.copy_translation))
+                            }
+                            if (state.targetCaption.isNotBlank()) {
+                                IconButton(onClick = { onSpeak(state.targetCaption) }) {
+                                    Icon(
+                                        if (state.speakingKey == "live-caption") LumoIcons.Stop else LumoIcons.Speaker,
+                                        contentDescription = stringResource(R.string.read_translation),
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        blocked?.let {
-            Text(stringResource(it), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-        }
         state.message?.let { message ->
-            Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            // 提示与报错都用现成的 ErrorCard，不在页面上摊开一行红字。
+            ErrorCard(message = message)
         }
+        // 主操作贴底：状态行 12sp + ≥56dp 的墨押按钮，最后让出导航条。
+        LiveStatusPill(
+            phase = state.livePhase,
+            hearing = state.hearing,
+            blocked = if (active) null else blocked,
+        )
         PrimaryActionButton(
             label = when (state.livePhase) {
                 LivePhase.Connecting -> stringResource(R.string.connecting)
@@ -532,6 +670,7 @@ private fun LiveStage(
             onClick = onToggle,
             enabled = blocked == null || active,
             stopStyle = active,
+            modifier = Modifier.navigationBarsPadding(),
         )
     }
 }
@@ -551,6 +690,7 @@ private fun TextStage(
     onSpeak: () -> Unit,
     onUseLocal: (String) -> Unit,
     onOpenRecord: (TranslationEntity) -> Unit,
+    onSpeakRecord: (TranslationEntity) -> Unit,
     onVoicePhase: (VoicePhase) -> Unit,
     onVoiceResult: (String) -> Unit,
     onVoiceError: (String) -> Unit,
@@ -558,6 +698,7 @@ private fun TextStage(
     onRequestMic: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sampleSentence = stringResource(R.string.translate_sample_sentence)
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val latestVoiceResult by rememberUpdatedState(onVoiceResult)
@@ -581,114 +722,122 @@ private fun TextStage(
     }
     val listening = state.voicePhase == VoicePhase.Listening
     val recognizing = state.voicePhase == VoicePhase.Recognizing
-    val busy = listening || recognizing || state.translating
+    // 粘贴：把剪贴板里的文字接在已输入内容后面。Android 10+ 只允许前台应用读剪贴板，
+    // 而这里一定是前台点按，所以直接读系统服务即可，不需要额外权限。
+    val paste: () -> Unit = {
+        val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val text = manager?.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.coerceToText(context)
+            ?.toString()
+            .orEmpty()
+            .trim()
+        if (text.isNotBlank()) {
+            onInput(if (state.input.isBlank()) text else state.input.trimEnd() + "\n" + text)
+        }
+    }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        LanguageRow(
+        // 语言与模型合成一张卡：模型不再单独占一行悬在画心上。
+        LanguageCard(
             source = languageLabel(state.textSource, textLanguages),
             target = languageLabel(state.textTarget, textLanguages),
+            trailing = translationModelLabel(state.model),
             onSource = onPickSource,
             onTarget = onPickTarget,
             onSwap = onSwap,
-        )
-        SettingLink(
-            label = stringResource(R.string.model_label, translationModelLabel(state.model)),
-            onClick = onPickModel,
+            onTrailing = onPickModel,
         )
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            TextSourceCard(
+            TextWorkCard(
                 input = state.input,
+                output = state.output,
+                translating = state.translating,
+                speaking = state.speakingKey == "text-output",
                 voicePhase = state.voicePhase,
                 onInput = onInput,
                 onClear = onClear,
                 onTranslate = onTranslate,
-                enabled = state.voicePhase == VoicePhase.Idle,
-            )
-            TextTargetCard(
-                output = state.output,
-                translating = state.translating,
-                speaking = state.speakingKey == "text-output",
                 onCopy = onCopy,
                 onSpeak = onSpeak,
+                onPaste = paste,
             )
             state.message?.let { message ->
-                Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                ErrorCard(message = message)
                 if (state.offerLocalFor != null) {
                     TextButton(onClick = { onUseLocal(state.offerLocalFor) }) {
                         Text(stringResource(R.string.use_local_once))
                     }
                 }
             }
-            LastRecordHint(records = records, onOpen = onOpenRecord)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HoldToTalkButton(
-                listening = listening,
-                recognizing = recognizing,
-                enabled = !state.translating,
-                onRequestMic = onRequestMic,
-                onStart = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    speech.start("")
-                },
-                onStop = { speech.stop() },
-                modifier = Modifier.weight(1f),
+            LastRecordHint(
+                records = records,
+                onOpen = onOpenRecord,
+                onSpeak = onSpeakRecord,
+                onTry = { onInput(sampleSentence) },
             )
-            val showTranslate = state.input.isNotBlank() || state.translating
-            AnimatedVisibility(visible = showTranslate) {
-                Button(
-                    onClick = onTranslate,
-                    enabled = state.input.isNotBlank() && !busy,
-                    modifier = Modifier.height(52.dp),
-                    shape = RoundedCornerShape(28.dp),
-                ) {
-                    if (state.translating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Text(stringResource(R.string.translate), style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
         }
+        // 「按住说话」贴底：和同传的主按钮同一条基线，navigationBarsPadding 让手势条不压按钮。
+        HoldToTalkButton(
+            listening = listening,
+            recognizing = recognizing,
+            enabled = !state.translating,
+            onRequestMic = onRequestMic,
+            onStart = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                // 把已有输入作为前缀传进去：边说边接在原句后面，不会把上一句吃掉。
+                speech.start(state.input)
+            },
+            onStop = { speech.stop() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+        )
     }
 }
 
+/**
+ * 文本工作台：原文与译文合成同一张宣纸，中间一道墨线。
+ *
+ * 原来拆成两张卡，读的时候视线要在两块之间跳；合起来之后原文在上、译文在下，
+ * 底部一排 20dp 图标管粘贴 / 清空 / 复制 / 朗读 / 发送，触达都按 48dp 给足。
+ */
 @Composable
-private fun TextSourceCard(
+private fun TextWorkCard(
     input: String,
+    output: String,
+    translating: Boolean,
+    speaking: Boolean,
     voicePhase: VoicePhase,
     onInput: (String) -> Unit,
     onClear: () -> Unit,
     onTranslate: () -> Unit,
-    enabled: Boolean,
+    onCopy: () -> Unit,
+    onSpeak: () -> Unit,
+    onPaste: () -> Unit,
 ) {
+    val palette = LocalLumoPalette.current
     val listening = voicePhase == VoicePhase.Listening
     val recognizing = voicePhase == VoicePhase.Recognizing
     val border by animateColorAsState(
         targetValue = when {
             listening -> MaterialTheme.colorScheme.primary
             recognizing -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+            else -> palette.glassBorder
         },
-        label = "sourceBorder",
+        label = "workCardBorder",
     )
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
+    val shape = RoundedCornerShape(22.dp)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, border, RoundedCornerShape(22.dp)),
+            .glass(shape = shape, tone = GlassTone.Paper, level = 1f)
+            .border(1.dp, border, shape),
     ) {
+        // ── 原文
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -702,15 +851,6 @@ private fun TextSourceCard(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
                     )
-                } else if (input.isNotBlank() && enabled) {
-                    IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.clear_input),
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
             BasicTextField(
@@ -718,9 +858,9 @@ private fun TextSourceCard(
                 onValueChange = onInput,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 112.dp)
+                    .heightIn(min = 88.dp)
                     .padding(top = 4.dp),
-                enabled = enabled,
+                enabled = voicePhase == VoicePhase.Idle,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 17.sp,
@@ -747,86 +887,127 @@ private fun TextSourceCard(
                 },
             )
         }
-    }
-}
-
-@Composable
-private fun TextTargetCard(
-    output: String,
-    translating: Boolean,
-    speaking: Boolean,
-    onCopy: () -> Unit,
-    onSpeak: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), RoundedCornerShape(22.dp)),
-    ) {
+        InkDivider(modifier = Modifier.padding(horizontal = 16.dp), alpha = 0.55f)
+        // ── 译文
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.target_label),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
-                when {
-                    translating -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                    output.isNotBlank() -> {
-                        IconButton(onClick = onCopy, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                Icons.Filled.ContentCopy,
-                                contentDescription = stringResource(R.string.copy_translation),
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                        IconButton(onClick = onSpeak, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                if (speaking) Icons.Filled.Stop else Icons.AutoMirrored.Filled.VolumeUp,
-                                contentDescription = stringResource(R.string.read_translation),
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    }
+                if (translating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
                 }
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 96.dp)
+                    .heightIn(min = 72.dp)
                     .padding(top = 4.dp),
             ) {
                 when {
-                    output.isNotBlank() -> {
-                        Text(
-                            output,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 28.sp),
-                        )
-                    }
-                    translating -> {
-                        Text(
-                            stringResource(R.string.translating),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                    else -> {
-                        Text(
-                            stringResource(R.string.output_placeholder),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
+                    output.isNotBlank() -> Text(
+                        output,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 28.sp),
+                    )
+                    translating -> Text(
+                        stringResource(R.string.translating),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    else -> Text(
+                        stringResource(R.string.output_placeholder),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
                 }
             }
+        }
+        InkDivider(modifier = Modifier.padding(horizontal = 16.dp), alpha = 0.55f)
+        // ── 操作行：图标 20dp、间距 12dp，每颗 48dp 触达
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TextActionIcon(
+                icon = LumoIcons.Doc,
+                contentDescription = stringResource(R.string.paste_input),
+                onClick = onPaste,
+            )
+            TextActionIcon(
+                icon = LumoIcons.Close,
+                contentDescription = stringResource(R.string.clear_input),
+                onClick = onClear,
+                enabled = input.isNotBlank(),
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            TextActionIcon(
+                icon = LumoIcons.Copy,
+                contentDescription = stringResource(R.string.copy_translation),
+                onClick = onCopy,
+                enabled = output.isNotBlank(),
+            )
+            TextActionIcon(
+                icon = if (speaking) LumoIcons.Stop else LumoIcons.Speaker,
+                contentDescription = stringResource(if (speaking) R.string.stop_reading else R.string.read_translation),
+                onClick = onSpeak,
+                enabled = output.isNotBlank(),
+            )
+            TextActionIcon(
+                icon = LumoIcons.Send,
+                contentDescription = stringResource(R.string.translate),
+                onClick = onTranslate,
+                enabled = input.isNotBlank() && !translating,
+                accent = true,
+                loading = translating,
+            )
+        }
+    }
+}
+
+/** 操作行里的一颗：20dp 图标 + 48dp 触达，禁用时降到 32% 墨度，发送那颗用朱砂。 */
+@Composable
+private fun TextActionIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    accent: Boolean = false,
+    loading: Boolean = false,
+) {
+    val tint = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.32f)
+        accent -> LocalLumoPalette.current.cinnabar
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = tint,
+            )
+        } else {
+            Icon(
+                icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(20.dp),
+                tint = tint,
+            )
         }
     }
 }
@@ -848,10 +1029,20 @@ private fun HoldToTalkButton(
         listening -> stringResource(R.string.release_to_stop)
         else -> stringResource(R.string.hold_to_talk)
     }
-    Surface(
+    val palette = LocalLumoPalette.current
+    val ringShape = RoundedCornerShape(28.dp)
+    // 朱砂环：待按是纸上一圈朱砂，按住才整颗填实。
+    Box(
         modifier = modifier
             .height(56.dp)
-            .clip(RoundedCornerShape(28.dp))
+            .glass(shape = ringShape, level = 0.9f)
+            .background(if (listening) palette.cinnabar else Color.Transparent, ringShape)
+            .border(
+                width = 1.5.dp,
+                color = palette.cinnabar.copy(alpha = if (active) 1f else 0.6f),
+                shape = ringShape,
+            )
+            .clip(ringShape)
             .pointerInput(enabled, recognizing) {
                 detectTapGestures(
                     onPress = {
@@ -870,37 +1061,34 @@ private fun HoldToTalkButton(
                     },
                 )
             },
-        shape = RoundedCornerShape(28.dp),
-        color = when {
-            listening -> MaterialTheme.colorScheme.primary
-            else -> MaterialTheme.colorScheme.primaryContainer
-        },
-        contentColor = when {
-            listening -> MaterialTheme.colorScheme.onPrimary
-            else -> MaterialTheme.colorScheme.onPrimaryContainer
-        },
-        shadowElevation = if (listening) 4.dp else 0.dp,
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
+            val content = if (listening) palette.sealInk else palette.cinnabar
             if (recognizing) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = palette.cinnabar,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             } else {
-                Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(
+                    LumoIcons.Mic,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = content,
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
                 label,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = content,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -908,26 +1096,145 @@ private fun HoldToTalkButton(
     }
 }
 
+/**
+ * 同传舞台：一枚呼吸的朱砂印作底，源/目标两枚语言印章上下叠在印心，中间一道墨线。
+ * 「正在听 / 正在译」只靠呼吸与印章表达，文字压到一行状态。
+ */
 @Composable
-private fun LiveEmptyHint(listening: Boolean = false, freeTier: Boolean = false) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 180.dp)
-            .padding(vertical = 24.dp),
-        contentAlignment = Alignment.Center,
+private fun LiveSealStage(
+    source: String,
+    target: String,
+    caption: String,
+) {
+    val palette = LocalLumoPalette.current
+    val sealInk = palette.sealInk
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            // 呼吸环只在收音时跳；连接阶段保持静止，免得让人以为已经在录。
+            BreathingSeal(size = 148.dp)
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    source,
+                    style = LumoType.seal.copy(fontSize = 16.sp, letterSpacing = 2.sp),
+                    color = sealInk,
+                    maxLines = 1,
+                )
+                InkDivider(
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    color = sealInk,
+                    alpha = 0.55f,
+                )
+                Text(
+                    target,
+                    style = LumoType.seal.copy(fontSize = 16.sp, letterSpacing = 2.sp),
+                    color = sealInk,
+                    maxLines = 1,
+                )
+            }
+        }
+        // 状态词挪到主按钮上方那行 12sp 药丸；印面上只留「音色」这枚小标签。
+        Box(
+            modifier = Modifier
+                .glass(shape = RoundedCornerShape(999.dp), level = 0.85f)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+        ) {
             Text(
-                stringResource(if (listening) R.string.hearing else R.string.live_hint_title),
+                caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * 同传舞台的静止态：180dp 双层墨圈 + 中央「听」朱砂小印，圈自己缓慢呼吸。
+ *
+ * 高度交给父级的 weight(1f)，自己只负责在剩余空间里垂直居中；小屏（< 380dp）把副文案收掉、
+ * 墨圈缩到 132dp，保证 56dp 的主按钮永远露在拇指下。
+ */
+@Composable
+private fun LiveStageIdle(
+    freeTier: Boolean,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalLumoPalette.current
+    val motion = LocalMotionEnabled.current
+    val ink = MaterialTheme.colorScheme.onSurface
+    val transition = rememberInfiniteTransition(label = "liveIdle")
+    val breath by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(LumoMotion.sealBreathMillis, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "liveIdleBreath",
+    )
+    val wave = if (motion) breath else 0.5f
+    val ring = if (compact) 132.dp else 180.dp
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(modifier = Modifier.size(ring), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val r = size.minDimension / 2f
+                // 双层墨圈：外圈随呼吸开合，内圈定住不动，像水面上的两圈涟漪。
+                drawCircle(
+                    color = ink.copy(alpha = 0.10f + 0.05f * wave),
+                    radius = r * (0.96f + 0.02f * wave),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+                drawCircle(
+                    color = ink.copy(alpha = 0.16f),
+                    radius = r * 0.72f,
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
+            BreathingSeal(size = if (compact) 52.dp else 64.dp) {
+                Text(
+                    text = "听",
+                    style = LumoType.seal.copy(fontSize = 22.sp),
+                    color = palette.sealInk,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(if (compact) 10.dp else 14.dp))
+        // 提示句放在一小片宣纸玻璃上：背景被加强后，11sp 淡字直接压山水会糊。
+        Column(
+            modifier = Modifier
+                .glass(shape = RoundedCornerShape(18.dp), level = 0.85f)
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                stringResource(R.string.live_hint_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (!listening) {
+            if (!compact) {
                 Text(
                     stringResource(if (freeTier) R.string.free_live_hint else R.string.live_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (freeTier) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = if (freeTier) {
+                        palette.gold
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -935,83 +1242,163 @@ private fun LiveEmptyHint(listening: Boolean = false, freeTier: Boolean = false)
 }
 
 @Composable
-private fun LiveStatusRow(phase: LivePhase, hearing: Boolean) {
-    val listening = phase == LivePhase.Listening && hearing
-    val pulse = if (listening) {
-        val transition = rememberInfiniteTransition(label = "hear")
-        transition.animateFloat(
-            initialValue = 0.45f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-            label = "hearAlpha",
-        ).value
-    } else {
-        1f
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun LiveEmptyHint(listening: Boolean = false, freeTier: Boolean = false) {
+    // 提示收进一张 0.9f 的玻璃卡：正文不压背景，也不再铺满整块舞台。
+    Column(
+        modifier = Modifier
+            .glass(shape = RoundedCornerShape(20.dp), level = 0.9f)
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .alpha(pulse)
-                .background(
-                    color = when {
-                        phase == LivePhase.Connecting -> MaterialTheme.colorScheme.outline
-                        hearing -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    shape = CircleShape,
-                ),
-        )
         Text(
-            when {
-                phase == LivePhase.Connecting -> stringResource(R.string.connecting)
-                hearing -> stringResource(R.string.hearing)
-                else -> stringResource(R.string.quiet)
-            },
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
+            stringResource(if (listening) R.string.hearing else R.string.live_hint_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
+        if (!listening) {
+            Text(
+                stringResource(if (freeTier) R.string.free_live_hint else R.string.live_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (freeTier) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
+/**
+ * 主按钮上方的一行状态：未开始 / 正在连接 / 正在听。
+ * 12sp 小字不能直接压山水，所以垫一枚 0.85f 的玻璃药丸。
+ */
 @Composable
-private fun LastRecordHint(records: List<TranslationEntity>, onOpen: (TranslationEntity) -> Unit) {
-    val latest = records.firstOrNull() ?: return
-    val preview = latest.targetText.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
-        .orEmpty()
-        .ifBlank { stringResource(R.string.no_target) }
-    Text(
-        stringResource(R.string.last_record, preview),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onOpen(latest) }
-            .padding(vertical = 4.dp),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+private fun LiveStatusPill(phase: LivePhase, hearing: Boolean, blocked: Int?) {
+    val palette = LocalLumoPalette.current
+    val listening = phase == LivePhase.Listening && hearing
+    val text = when {
+        phase == LivePhase.Connecting -> stringResource(R.string.connecting)
+        phase == LivePhase.Listening -> stringResource(if (hearing) R.string.hearing else R.string.quiet)
+        blocked != null -> stringResource(blocked)
+        else -> stringResource(R.string.live_status_idle)
+    }
+    val accent = when {
+        blocked != null && phase == LivePhase.Idle -> palette.gold
+        phase == LivePhase.Connecting || listening -> palette.cinnabar
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .glass(shape = RoundedCornerShape(999.dp), level = 0.85f)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(accent),
+            )
+            Text(
+                text,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                color = accent,
+                maxLines = 1,
+            )
+        }
+    }
 }
 
+/**
+ * 上次记录：一块 0.9f 的玻璃卡。
+ *
+ * 有记录 → 译文首行（最多两行）+ 时间 + 右侧播放按钮；
+ * 没记录 → 一句「对着手机说」加一枚示例句 chip，点一下把这句填进文本输入。
+ * 原来的裸字贴在画心上，既不好读也不好点。
+ */
 @Composable
-private fun SettingLink(label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Icon(
-            Icons.Filled.ExpandMore,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun LastRecordHint(
+    records: List<TranslationEntity>,
+    onOpen: (TranslationEntity) -> Unit,
+    onSpeak: (TranslationEntity) -> Unit,
+    onTry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sampleSentence = stringResource(R.string.translate_sample_sentence)
+    val latest = records.firstOrNull()
+    if (latest == null) {
+        GlassCard(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            level = 0.9f,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text(
+                stringResource(R.string.try_hint),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            GlassChip(
+                text = sampleSentence,
+                selected = false,
+                onClick = onTry,
+                modifier = Modifier.align(Alignment.Start),
+            )
+        }
+    } else {
+        val preview = latest.targetText.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
+            .ifBlank { stringResource(R.string.no_target) }
+        GlassCard(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            level = 0.9f,
+            onClick = { onOpen(latest) },
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.last_record, preview),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        recordWhen(latest.createdAt, withClock = true),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                // 播放：40dp 玻璃圆钮，点它是朗读这条译文，点卡片其余部分是打开详情。
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .glass(shape = CircleShape, level = 0.9f)
+                        .border(1.dp, LocalLumoPalette.current.cinnabar.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    IconButton(onClick = { onSpeak(latest) }, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            LumoIcons.Play,
+                            contentDescription = stringResource(R.string.read_translation),
+                            modifier = Modifier.size(18.dp),
+                            tint = LocalLumoPalette.current.cinnabar,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1021,22 +1408,53 @@ private fun PrimaryActionButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     stopStyle: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = if (stopStyle) {
-            ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    // 墨押按钮：整幅宣纸上压一道细边，左侧一个墨点。不用实心色条，
+    // 因为「开始同传」是一句招呼，不是一声警报。
+    val palette = LocalLumoPalette.current
+    val celadon = MaterialTheme.colorScheme.primary
+    val accent = if (stopStyle) palette.cinnabar else celadon
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .glass(shape = shape, level = if (enabled) 1f else 0.5f)
+            .border(
+                width = 1.dp,
+                color = accent.copy(alpha = if (enabled) 0.85f else 0.30f),
+                shape = shape,
             )
-        } else {
-            ButtonDefaults.buttonColors()
-        },
+            .clip(shape),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        InkRipple(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = if (enabled) 1f else 0.35f)),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                    fontWeight = FontWeight.Medium,
+                    color = accent.copy(alpha = if (enabled) 1f else 0.45f),
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
@@ -1059,6 +1477,8 @@ private fun RecordBrowser(
     onUseLocal: (String) -> Unit,
     onDelete: (Long) -> Unit,
     onReuse: (TranslationEntity) -> Unit,
+    /** 图片翻译记录里的「重新选一张」；由调用方接到选图器上。 */
+    onRetakePhoto: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     when (browse) {
@@ -1079,6 +1499,7 @@ private fun RecordBrowser(
                     onUseLocal = onUseLocal,
                     onDelete = { onDelete(record.id) },
                     onReuse = { onReuse(record) },
+                    onRetakePhoto = if (record.kind == "PHOTO") onRetakePhoto else null,
                     modifier = modifier,
                 )
             }
@@ -1102,12 +1523,14 @@ private fun RecordListPage(
                 record.targetText.contains(query, ignoreCase = true)
         }
     }
+    val palette = LocalLumoPalette.current
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 页内标题用印章体：和卡片上的「印」是同一套笔画，导航逻辑不动，只换外观。
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                Icon(LumoIcons.Back, contentDescription = stringResource(R.string.back))
             }
-            Text(stringResource(R.string.history), style = MaterialTheme.typography.titleMedium)
+            SealedSectionTitle(text = stringResource(R.string.history))
         }
         if (records.size > SEARCH_AFTER) {
             OutlinedTextField(
@@ -1123,13 +1546,22 @@ private fun RecordListPage(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (filtered.isEmpty()) {
-                Text(
-                    stringResource(if (query.isBlank()) R.string.no_history else R.string.no_search_hits),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 空态也是一张玻璃卡：正文不直接压山水。
+                GlassCard(modifier = Modifier.fillMaxWidth(), level = 0.9f) {
+                    Text(
+                        stringResource(if (query.isBlank()) R.string.no_history else R.string.no_search_hits),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
             filtered.groupBy { recordDayLabel(it.createdAt) }.forEach { (day, items) ->
-                Text(day, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    day,
+                    modifier = Modifier.padding(start = 4.dp),
+                    style = LumoType.seal.copy(fontSize = 13.sp),
+                    color = palette.cinnabar,
+                )
                 items.forEach { record -> RecordSummary(record, onOpen) }
             }
         }
@@ -1149,16 +1581,24 @@ private fun RecordDetail(
     onUseLocal: (String) -> Unit,
     onDelete: () -> Unit,
     onReuse: () -> Unit,
+    /** 图片翻译记录专用的「重新选图」出口；非图片来源时为 null。 */
+    onRetakePhoto: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var confirming by remember(record.id) { mutableStateOf(false) }
-    val languages = if (record.kind == "LIVE") liveLanguages else textLanguages
+    val languages = if (record.kind == "LIVE" || record.kind == "FACE") liveLanguages else textLanguages
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 详情顶部也是一张玻璃卡：时间 / 语言 / 音色三行小字不能直接压山水。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .glass(shape = RoundedCornerShape(20.dp), level = 0.9f),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                Icon(LumoIcons.Back, contentDescription = stringResource(R.string.back))
             }
-            Column {
+            Column(modifier = Modifier.padding(vertical = 10.dp)) {
                 Text(recordWhen(record.createdAt, withClock = true), style = MaterialTheme.typography.titleMedium)
                 Text(
                     "${languageLabel(record.sourceLang, languages)} → ${languageLabel(record.targetLang, languages)}",
@@ -1166,7 +1606,14 @@ private fun RecordDetail(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    if (record.kind == "LIVE") storedVoiceLabel(record.option) else translationModelLabel(record.option),
+                    when (record.kind) {
+                        "LIVE" -> storedVoiceLabel(record.option)
+                        "PHOTO" -> record.option
+                        "FACE" -> stringResource(
+                            if (record.option == "ME") R.string.face_me else R.string.face_other,
+                        )
+                        else -> translationModelLabel(record.option)
+                    },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1176,11 +1623,37 @@ private fun RecordDetail(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // 图片翻译只存文字：原图在识别完成后就被删掉了，
+            // 这里说清楚，并提供「重新选一张」的出口，避免用户以为图丢了是 bug。
+            if (record.kind == "PHOTO") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .glass(shape = RoundedCornerShape(12.dp), level = 0.8f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.photo_record_no_image),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (onRetakePhoto != null) {
+                            TextButton(
+                                onClick = onRetakePhoto,
+                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                            ) { Text(stringResource(R.string.photo_record_retake)) }
+                        }
+                    }
+                }
+            }
             CaptionCard(stringResource(R.string.source_label), record.sourceText.ifBlank { stringResource(R.string.no_source) }, "", compact = true)
             CaptionCard(stringResource(R.string.target_label), record.targetText.ifBlank { stringResource(R.string.no_target) }, "", compact = false)
         }
         message?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            ErrorCard(message = it)
             if (offerLocalFor != null) {
                 TextButton(onClick = { onUseLocal(offerLocalFor) }) { Text(stringResource(R.string.use_local_once)) }
             }
@@ -1213,30 +1686,44 @@ private fun RecordDetail(
 @Composable
 private fun RecordSummary(record: TranslationEntity, onOpen: (TranslationEntity) -> Unit) {
     val pair = "${shortLanguageLabel(record.sourceLang)} → ${shortLanguageLabel(record.targetLang)}"
-    Surface(
+    val palette = LocalLumoPalette.current
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    // 每条记录带一幅「那天的山」缩略图：翻历史先认画，再读字。
+    val thumb = remember(record.id) { SceneryCatalog.daily(record.createdAt / 86_400_000L) }
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .glass(shape = RoundedCornerShape(20.dp), level = 0.9f)
             .clickable { onOpen(record) },
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            AsyncImage(
+                model = if (dark) thumb.nightRes else thumb.dayRes,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(width = 44.dp, height = 58.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                    Box(
+                        modifier = Modifier.glass(shape = RoundedCornerShape(8.dp), level = 0.8f),
                     ) {
                         Text(
-                            stringResource(if (record.kind == "LIVE") R.string.tab_live else R.string.tab_text),
+                            when (record.kind) {
+                                "LIVE" -> stringResource(R.string.tab_live)
+                                "PHOTO" -> stringResource(R.string.tab_photo)
+                                "FACE" -> stringResource(R.string.tab_face)
+                                else -> stringResource(R.string.tab_text)
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -1270,7 +1757,7 @@ private fun RecordSummary(record: TranslationEntity, onOpen: (TranslationEntity)
                 )
             }
             Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                LumoIcons.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1317,36 +1804,104 @@ private fun sameDay(left: Calendar, right: Calendar): Boolean =
 private const val SEARCH_AFTER = 6
 
 @Composable
-private fun LanguageRow(
+private fun LanguageCard(
     source: String,
     target: String,
+    trailing: String?,
     onSource: () -> Unit,
     onTarget: () -> Unit,
     onSwap: (() -> Unit)?,
+    onTrailing: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    hint: String? = null,
 ) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+    val palette = LocalLumoPalette.current
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .glass(shape = shape, level = 0.9f)
+            .border(1.dp, palette.glassBorder, shape),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LanguageChip(source, onSource, Modifier.weight(1f))
             if (onSwap != null) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+                Box(
+                    modifier = Modifier
+                        .glass(shape = CircleShape, tone = GlassTone.Paper, level = 0.7f)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                            shape = CircleShape,
+                        ),
+                ) {
                     IconButton(onClick = onSwap, modifier = Modifier.size(40.dp)) {
                         Icon(
-                            Icons.Filled.SwapHoriz,
+                            LumoIcons.Swap,
                             contentDescription = stringResource(R.string.swap_languages),
                             tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
                         )
                     }
                 }
             }
             LanguageChip(target, onTarget, Modifier.weight(1f))
+            if (trailing != null && onTrailing != null) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(18.dp)
+                        .background(palette.glassBorder),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                SettingPill(label = trailing, onClick = onTrailing)
+            }
         }
+        if (hint != null) {
+            Text(
+                hint,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 卡右端的小设置 chip：朱砂淡底 + 细边 + 一个小箭头，40dp 高、触达按拇指给足。 */
+@Composable
+private fun SettingPill(label: String, onClick: () -> Unit) {
+    val palette = LocalLumoPalette.current
+    val shape = RoundedCornerShape(999.dp)
+    Row(
+        modifier = Modifier
+            .heightIn(min = 40.dp)
+            .widthIn(max = 100.dp)
+            .clip(shape)
+            .background(palette.cinnabar.copy(alpha = 0.10f), shape)
+            .border(1.dp, palette.cinnabar.copy(alpha = 0.45f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = palette.cinnabar,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Icon(
+            LumoIcons.ChevronDown,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = palette.cinnabar,
+        )
     }
 }
 
@@ -1356,12 +1911,12 @@ private fun LanguageChip(label: String, onClick: () -> Unit, modifier: Modifier)
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1371,14 +1926,15 @@ private fun LanguageChip(label: String, onClick: () -> Unit, modifier: Modifier)
 
 @Composable
 private fun CaptionCard(title: String, committed: String, partial: String, compact: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = if (compact) {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        modifier = Modifier.fillMaxWidth(),
+    // 源文是纸白、译文带一层石青：不看标题也知道哪一半是哪一半。
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glass(
+                shape = RoundedCornerShape(22.dp),
+                tone = if (compact) GlassTone.Paper else GlassTone.Celadon,
+                level = if (compact) 0.85f else 1f,
+            ),
     ) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
             Text(
@@ -1416,6 +1972,7 @@ private fun CaptionCard(title: String, committed: String, partial: String, compa
 /** 同传时的动态声波。 */
 @Composable
 private fun LiveWave() {
+    val stroke = LocalLumoPalette.current.cinnabar
     val transition = rememberInfiniteTransition(label = "liveWave")
     val phase by transition.animateFloat(
         initialValue = 0f,
@@ -1435,7 +1992,8 @@ private fun LiveWave() {
             val wave = kotlin.math.abs(kotlin.math.sin(phase * 2f * Math.PI.toFloat() + i * 0.6f))
             val height = size.height * (0.2f + 0.8f * wave)
             drawRoundRect(
-                color = Color(0xFF5B6CFF),
+                // 同传声波也回到朱砂：不再是那块「品牌蓝」。
+                color = stroke.copy(alpha = 0.55f),
                 topLeft = Offset(i * gap + gap * 0.2f, (size.height - height) / 2f),
                 size = Size(gap * 0.6f, height),
                 cornerRadius = CornerRadius(gap * 0.3f),
@@ -1582,7 +2140,7 @@ private fun OptionRow(label: String, detail: String?, selected: Boolean, onClick
             }
         }
         if (selected) {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Icon(LumoIcons.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

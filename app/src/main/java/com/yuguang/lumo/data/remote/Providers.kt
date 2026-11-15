@@ -8,7 +8,9 @@ import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.Role
 import com.yuguang.lumo.domain.model.StreamEvent
 import com.yuguang.lumo.domain.model.WireMessage
+import com.yuguang.lumo.data.FreeModelHealth
 import com.yuguang.lumo.domain.model.freeFallbackChain
+import com.yuguang.lumo.domain.model.freeForcedReasoning
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -50,47 +52,69 @@ class DeepSeekProvider @Inject constructor(
 class FreeProvider @Inject constructor(
     @ApplicationContext private val context: Context,
     private val client: OpenAiCompatibleClient,
+    private val health: FreeModelHealth,
 ) : LlmProvider {
     override val id: ProviderId = ProviderId.FREE
 
     override fun stream(apiKey: String, baseUrl: String, request: ChatRequest): Flow<StreamEvent> = flow {
+        // 调用方显式给了降级候选（例如图片翻译传视觉链）时，就不要再混入文本链：
+        // 纯文本模型收到图片只会 400/404，白跑几轮还会把失败拖长。
         val chain = buildList {
             add(request.model)
             addAll(request.fallbackModels)
-            addAll(freeFallbackChain)
-        }.filter { it.isNotBlank() }.distinct()
+            if (request.fallbackModels.isEmpty()) addAll(freeFallbackChain)
+        }.filter { it.isNotBlank() }.distinct().let { health.filterChain(it) }
 
         var lastFailure: StreamEvent.Failed? = null
         for ((index, model) in chain.withIndex()) {
-            val outcome = Attempt()
-            client.stream(
-                url = EndpointUrls.chatCompletions(baseUrl, id),
-                apiKey = apiKey,
-                body = freeChatBody(request.copy(model = model)),
-                headers = ATTRIBUTION,
-            ).collect { event ->
-                when (event) {
-                    is StreamEvent.Delta -> {
-                        outcome.body = true
-                        emit(event)
-                    }
-                    is StreamEvent.Reasoning -> emit(event)
-                    is StreamEvent.ToolCalls -> emit(event)
-                    is StreamEvent.Completed -> {
-                        outcome.done = true
-                        emit(event)
-                    }
-                    is StreamEvent.Failed -> {
-                        lastFailure = event
-                        // 已经出过正文，或错误与模型无关，就把失败交给上层。
-                        if (outcome.body || !event.retryable) {
-                            outcome.done = true
+            // 已知强制思考的模型直接省略字段，省掉一轮 400 往返。
+            var omitReasoning = model in freeForcedReasoning
+            var stop = false
+            repeat(MAX_TRIES_PER_MODEL) { attempt ->
+                val outcome = Attempt()
+                client.stream(
+                    url = EndpointUrls.chatCompletions(baseUrl, id),
+                    apiKey = apiKey,
+                    body = freeChatBody(request.copy(model = model), omitReasoning),
+                    headers = ATTRIBUTION,
+                ).collect { event ->
+                    when (event) {
+                        is StreamEvent.Delta -> {
+                            outcome.body = true
                             emit(event)
+                        }
+                        is StreamEvent.Reasoning -> emit(event)
+                        is StreamEvent.ToolCalls -> emit(event)
+                        is StreamEvent.Completed -> {
+                            outcome.done = true
+                            health.recordSuccess(model)
+                            emit(event)
+                        }
+                        is StreamEvent.Failed -> {
+                            lastFailure = event
+                            // 已经出过正文，或错误与模型无关，就把失败交给上层。
+                            if (outcome.body || !event.retryable) {
+                                outcome.done = true
+                                emit(event)
+                            }
                         }
                     }
                 }
+                if (outcome.done) {
+                    stop = true
+                    return@repeat
+                }
+                // 少数模型强制思考：收到 reasoning.enabled=false 会 400，
+                // 这时去掉该字段对同一个模型重试一次，而不是直接放弃。
+                if (attempt == 0 && !omitReasoning && lastFailure.isReasoningMandatory()) {
+                    omitReasoning = true
+                    return@repeat
+                }
+                stop = true
             }
-            if (outcome.done) return@flow
+            if (stop) return@flow
+            // 这个模型这轮确实没成：记一次失败，接下来 24 小时优先走别人。
+            lastFailure?.let { health.recordFailure(model, it.message) }
             if (index == chain.lastIndex) {
                 emit(lastFailure ?: StreamEvent.Failed(context.getString(R.string.free_chat_failed)))
                 return@flow
@@ -104,13 +128,20 @@ class FreeProvider @Inject constructor(
         var done = false
     }
 
-    private fun freeChatBody(request: ChatRequest): JsonObject = buildJsonObject {
+    /**
+     * 免费池的请求体。
+     *
+     * 思考字段**默认显式关闭**：实测把它省略时，多数模型会自己开始长篇思考
+     * （光一个「什么是光」就能想出 2400 字），既拖慢首字又挤占输出额度。
+     * 只有 [omitReasoning] 为真（模型强制思考、或刚被 400 拒过）时才彻底不写该字段。
+     */
+    private fun freeChatBody(request: ChatRequest, omitReasoning: Boolean): JsonObject = buildJsonObject {
         put("model", request.model)
         put("stream", true)
         putJsonObject("stream_options") { put("include_usage", true) }
-        // 免费池的思考默认开启，且思考与正文共享输出额度：
-        // 不显式关闭或限制上限时，短问题也可能整轮只出思考。
-        putJsonObject("reasoning") { put("enabled", request.thinking) }
+        if (!omitReasoning) {
+            putJsonObject("reasoning") { put("enabled", request.thinking) }
+        }
         if (request.maxOutputTokens > 0) {
             put("max_completion_tokens", request.maxOutputTokens)
         }
@@ -125,12 +156,23 @@ class FreeProvider @Inject constructor(
     }
 
     private companion object {
+        /** 同模型重试次数：第二次专门用于「强制思考」模型的无字段回退。 */
+        const val MAX_TRIES_PER_MODEL = 2
+
         /** 上游按接入方统计用量，带上归属信息是礼貌的默认值。 */
         val ATTRIBUTION = mapOf(
             "HTTP-Referer" to "https://kilo.ai/",
             "X-Title" to "Lumo",
         )
     }
+}
+
+/** 上游是否明确表示「本接口必须思考」，据此决定要不要去掉 reasoning 字段重试。 */
+private fun StreamEvent.Failed?.isReasoningMandatory(): Boolean {
+    val blob = this?.message.orEmpty().lowercase()
+    return blob.contains("reasoning is mandatory") ||
+        blob.contains("reasoning_is_mandatory") ||
+        (blob.contains("reasoning") && blob.contains("cannot be disabled"))
 }
 
 /** 用户自填的 OpenAI 兼容端点；Key 可选（本地网关通常不需要）。 */

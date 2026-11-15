@@ -10,6 +10,7 @@ import com.yuguang.lumo.domain.model.ModelChoice
 import com.yuguang.lumo.domain.model.ModelGroup
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.defaultImageGenModel
+import com.yuguang.lumo.domain.model.freeModelBlocklist
 import com.yuguang.lumo.domain.model.modelChoices
 import com.yuguang.lumo.domain.model.staticSupportsVision
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -38,7 +39,14 @@ class ModelCatalogRepositoryImpl @Inject constructor(
 
     override fun observe(provider: ProviderId): Flow<List<ModelChoice>> =
         cache.map { map ->
-            map[provider]?.takeIf { it.isNotEmpty() } ?: provider.modelChoices()
+            val remote = map[provider]?.takeIf { it.isNotEmpty() }
+            if (remote == null) {
+                provider.modelChoices()
+            } else if (provider == ProviderId.FREE) {
+                remote.filterNot { it.id in freeModelBlocklist }
+            } else {
+                remote
+            }
         }
 
     override fun supportsVision(provider: ProviderId, modelId: String): Boolean {
@@ -113,7 +121,10 @@ class ModelCatalogRepositoryImpl @Inject constructor(
         if (System.currentTimeMillis() - parsed.savedAt > TTL_MS) return emptyMap()
         return parsed.entries.mapNotNull { entry ->
             val provider = runCatching { ProviderId.valueOf(entry.provider) }.getOrNull() ?: return@mapNotNull null
-            provider to entry.models.map { dto ->
+            // 旧缓存里可能还留着已剔除的免费模型，读取时统一过滤，避免升级后仍显示。
+            provider to entry.models.filterNot { dto ->
+                provider == ProviderId.FREE && dto.id in freeModelBlocklist
+            }.map { dto ->
                 ModelChoice(
                     provider = provider,
                     id = dto.id,
@@ -154,7 +165,8 @@ class ModelCatalogRepositoryImpl @Inject constructor(
     }
 
     private companion object {
-        const val CACHE_KEY = "model_catalog_v3"
+        // v4：剔除实测不可用的免费模型后重建缓存，旧目录不再覆盖新清单。
+        const val CACHE_KEY = "model_catalog_v4"
         const val TTL_MS = 24L * 60L * 60L * 1000L
     }
 }

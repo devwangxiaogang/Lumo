@@ -9,7 +9,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
 import com.yuguang.lumo.data.ChatBackupManager
+import com.yuguang.lumo.data.FailureCooldown
 import com.yuguang.lumo.data.FreeLaneSelfTest
+import com.yuguang.lumo.data.FreeModelHealth
+import com.yuguang.lumo.data.ModelFailure
 import com.yuguang.lumo.data.MemoryStore
 import com.yuguang.lumo.data.SelfTestItem
 import com.yuguang.lumo.data.local.MemoryEntity
@@ -42,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     private val backupManager: ChatBackupManager,
     private val memoryStore: MemoryStore,
     private val selfTest: FreeLaneSelfTest,
+    private val freeHealth: FreeModelHealth,
 ) : ViewModel() {
     var configs by mutableStateOf<Map<ProviderId, ProviderConfig>?>(null)
         private set
@@ -110,10 +114,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** 边生成边朗读开关。 */
+    fun setAutoRead(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.editSpeech { it.copy(autoRead = enabled) }
+            speech = settingsRepository.speech()
+        }
+    }
+
     fun setMemoryEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setMemoryEnabled(enabled)
             memoryOn = enabled
+        }
+    }
+
+    /** AI 自动标题开关。默认开；关闭后列表沿用首条消息截断标题。 */
+    var autoTitleEnabled by mutableStateOf(true)
+        private set
+
+    fun setAutoTitle(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAutoTitleEnabled(enabled)
+            autoTitleEnabled = enabled
         }
     }
 
@@ -126,6 +149,7 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             memoryOn = settingsRepository.memoryEnabled()
+            autoTitleEnabled = settingsRepository.autoTitleEnabled()
             memoryStore.observe().collect { memories = it }
         }
     }
@@ -143,6 +167,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             memoryStore.delete(id)
             messagesFlow.emit(context.getString(R.string.memory_deleted))
+        }
+    }
+
+    /** 清空全部长期记忆：一次事务 + 一条提示，避免逐条删除刷屏。 */
+    fun clearAllMemories() {
+        viewModelScope.launch {
+            val removed = memoryStore.clearAll()
+            messagesFlow.emit(context.getString(R.string.settings_memory_cleared, removed))
         }
     }
 
@@ -182,6 +214,24 @@ class SettingsViewModel @Inject constructor(
 
     var selfTestResults by mutableStateOf<List<SelfTestItem>>(emptyList())
         private set
+
+    /** 免费池当前的失败冷却记录；界面据此显示「哪些模型暂时不参与」。 */
+    var modelFailures by mutableStateOf<List<ModelFailure>>(emptyList())
+        private set
+
+    init {
+        viewModelScope.launch {
+            freeHealth.failures.collect { modelFailures = FailureCooldown.active(it, freeHealth.now()) }
+        }
+    }
+
+    /** 清空冷却记录，让所有模型立刻重新参与降级链。 */
+    fun resetModelHealth() {
+        viewModelScope.launch {
+            freeHealth.reset()
+            messagesFlow.emit(context.getString(R.string.free_health_reset_done))
+        }
+    }
 
     fun runSelfTest() {
         if (selfTesting) return

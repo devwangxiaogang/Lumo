@@ -21,6 +21,7 @@ import com.yuguang.lumo.domain.LlmProvider
 import com.yuguang.lumo.domain.ModelCatalogRepository
 import com.yuguang.lumo.domain.SettingsRepository
 import com.yuguang.lumo.domain.model.AttachmentSource
+import com.yuguang.lumo.domain.model.BranchPath
 import com.yuguang.lumo.domain.model.ChatMessage
 import com.yuguang.lumo.domain.model.ChatRequest
 import com.yuguang.lumo.domain.model.Conversation
@@ -40,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -47,6 +49,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -67,6 +70,7 @@ class ChatRepositoryImpl @Inject constructor(
     private val providers: Map<ProviderId, @JvmSuppressWildcards LlmProvider>,
     private val settingsRepository: SettingsRepository,
     private val memoryStore: MemoryStore,
+    private val autoTitler: AutoTitler,
     private val toolRegistry: ToolRegistry,
     private val json: Json,
     @AppScope private val appScope: CoroutineScope,
@@ -224,9 +228,10 @@ class ChatRepositoryImpl @Inject constructor(
                         prompt = trimmed.ifBlank { context.getString(R.string.draw_default_prompt) },
                         imported = imported,
                         insertUser = true,
+                        parentId = conversation.leafMessageId,
                     )
                 } else {
-                    generate(conversation, provider, config, trimmed, imported)
+                    generate(conversation, provider, config, trimmed, imported, conversation.leafMessageId)
                 }
             }
         ) {
@@ -240,10 +245,15 @@ class ChatRepositoryImpl @Inject constructor(
         if (jobs[conversationId]?.isActive == true) return context.getString(R.string.generating)
         val prepared = prepare(conversationId) ?: return context.getString(R.string.conversation_missing)
         val (conversation, provider, config) = prepared
-        val last = messageDao.latest(conversationId) ?: return context.getString(R.string.nothing_to_retry)
+        // 只重试激活路径上的失败助手消息：别的分支可能也有失败记录，不能误删。
+        val path = activePath(conversation)
+        val last = path.lastOrNull() ?: return context.getString(R.string.nothing_to_retry)
         if (last.role != Role.ASSISTANT.name || last.status != MessageStatus.FAILED.name) {
             return context.getString(R.string.nothing_to_retry)
         }
+        // 失败助手消息的父节点就是这一轮的用户消息。
+        val user = last.parentId.takeIf { it > 0L }?.let { messageDao.byId(it) }
+        val prompt = user?.content.orEmpty()
         val drawRetry = last.error.startsWith(DRAW_ERROR_PREFIX)
         if (drawRetry) {
             val doubao = settingsRepository.get(ProviderId.DOUBAO)
@@ -252,30 +262,96 @@ class ChatRepositoryImpl @Inject constructor(
             val rejected = rejectIfBusyOrMissingKey(conversationId, provider, config)
             if (rejected != null) return rejected
         }
-        val paths = attachmentDao.forMessage(last.id).map { it.localPath }
-        messageDao.delete(last.id)
-        mediaStore.deletePaths(paths)
-        val user = messageDao.lastDoneUser(conversationId)
-            ?: return context.getString(R.string.nothing_to_retry)
+        // 1.3 起不删除失败回复：在同一父节点下新增兄弟助手消息，旧回复可用切换器找回。
         if (!start(conversation.id) {
                 if (drawRetry) {
-                    val refs = attachmentDao.forMessage(user.id)
-                        .filter { it.source == AttachmentSource.USER.name }
-                        .map { ChatMediaStore.ImportedImage(it.localPath, it.mime) }
+                    val refs = user?.let {
+                        attachmentDao.forMessage(it.id)
+                            .filter { it.source == AttachmentSource.USER.name }
+                            .map { attachment -> ChatMediaStore.ImportedImage(attachment.localPath, attachment.mime) }
+                    }.orEmpty()
                     generateImage(
                         conversation = conversation,
-                        prompt = user.content.ifBlank { context.getString(R.string.draw_default_prompt) },
+                        prompt = prompt.ifBlank { context.getString(R.string.draw_default_prompt) },
                         imported = refs,
                         insertUser = false,
+                        parentId = last.parentId,
                     )
                 } else {
-                    generate(conversation, provider, config, newUserText = null, imported = emptyList())
+                    // 当前 leaf 还是那条失败的助手消息，直接在这种位置补一条兄弟回复。
+                    generate(
+                        conversation = conversation,
+                        provider = provider,
+                        config = config,
+                        newUserText = null,
+                        imported = emptyList(),
+                        parentId = last.parentId,
+                    )
                 }
             }
         ) {
             return context.getString(R.string.generating)
         }
         return null
+    }
+
+    override suspend fun editAndSend(conversationId: Long, messageId: Long, newText: String): String? {
+        val trimmed = newText.trim()
+        if (trimmed.isEmpty()) return context.getString(R.string.enter_message)
+        if (jobs[conversationId]?.isActive == true) return context.getString(R.string.generating)
+        val prepared = prepare(conversationId) ?: return context.getString(R.string.conversation_missing)
+        val (conversation, provider, config) = prepared
+        val target = messageDao.byId(messageId) ?: return context.getString(R.string.nothing_to_retry)
+        if (target.conversationId != conversationId) return context.getString(R.string.nothing_to_retry)
+        val rejected = rejectIfBusyOrMissingKey(conversationId, provider, config)
+        if (rejected != null) return rejected
+        if (!start(conversation.id) {
+                // 新用户消息挂在被编辑消息的父节点下，成为同级的兄弟分支。
+                generate(
+                    conversation = conversation,
+                    provider = provider,
+                    config = config,
+                    newUserText = trimmed,
+                    imported = emptyList(),
+                    parentId = target.parentId,
+                )
+            }
+        ) {
+            return context.getString(R.string.generating)
+        }
+        return null
+    }
+
+    override suspend fun switchBranch(conversationId: Long, messageId: Long): String? {
+        if (jobs[conversationId]?.isActive == true) return context.getString(R.string.generating)
+        val conversation = conversationDao.get(conversationId)
+            ?: return context.getString(R.string.conversation_missing)
+        val target = messageDao.byId(messageId) ?: return context.getString(R.string.nothing_to_retry)
+        if (target.conversationId != conversationId) return context.getString(R.string.nothing_to_retry)
+        val all = messageDao.list(conversationId)
+        val leaf = BranchPath.deepestLeafOrdered(
+            items = all,
+            targetId = messageId,
+            order = compareBy({ it.createdAt }, { it.id }),
+            idOf = { it.id },
+            parentOf = { it.parentId },
+        )
+        if (leaf <= 0L) return context.getString(R.string.nothing_to_retry)
+        conversationDao.setLeaf(conversation.id, leaf)
+        return null
+    }
+
+    /** 当前激活路径（含 FAILED，生成历史时再按状态过滤）。 */
+    private suspend fun activePath(conversation: ConversationEntity): List<MessageEntity> {
+        val all = messageDao.list(conversation.id)
+        val leaf = conversation.leafMessageId
+        return BranchPath.resolveOrdered(
+            items = all,
+            leafId = leaf,
+            order = compareBy({ it.createdAt }, { it.id }),
+            idOf = { it.id },
+            parentOf = { it.parentId },
+        )
     }
 
     override fun stop(conversationId: Long) {
@@ -333,8 +409,10 @@ class ChatRepositoryImpl @Inject constructor(
         config: ProviderConfig,
         newUserText: String?,
         imported: List<ChatMediaStore.ImportedImage>,
+        parentId: Long,
     ) {
         var assistantId = 0L
+        var userId = 0L
         var content = ""
         var reasoning = ""
         var terminal = false
@@ -342,13 +420,14 @@ class ChatRepositoryImpl @Inject constructor(
             val now = System.currentTimeMillis()
             val userText = newUserText.orEmpty()
             if (newUserText != null || imported.isNotEmpty()) {
-                val userId = messageDao.insert(
+                userId = messageDao.insert(
                     MessageEntity(
                         conversationId = conversation.id,
                         role = Role.USER.name,
                         content = userText,
                         status = MessageStatus.DONE.name,
                         createdAt = now,
+                        parentId = parentId,
                     ),
                 )
                 if (imported.isNotEmpty()) {
@@ -369,18 +448,18 @@ class ChatRepositoryImpl @Inject constructor(
             val model = conversation.model.ifBlank {
                 config.model.ifBlank { provider.defaultModel }
             }
-            conversationDao.update(
-                conversation.copy(
-                    title = if ((newUserText != null || imported.isNotEmpty()) &&
-                        isUntitled(conversation.title)
-                    ) {
-                        userText.take(24).ifBlank { context.getString(R.string.image_message_title) }
-                    } else {
-                        conversation.title
-                    },
-                    model = model,
-                    updatedAt = now,
-                ),
+            // 用列级更新而不是整行覆盖：整行写回会把刚推进的 leafMessageId 冲回旧值。
+            conversationDao.touch(
+                id = conversation.id,
+                title = if ((newUserText != null || imported.isNotEmpty()) &&
+                    isUntitled(conversation.title)
+                ) {
+                    userText.take(24).ifBlank { context.getString(R.string.image_message_title) }
+                } else {
+                    conversation.title
+                },
+                model = model,
+                updatedAt = now,
             )
             assistantId = messageDao.insert(
                 MessageEntity(
@@ -389,9 +468,13 @@ class ChatRepositoryImpl @Inject constructor(
                     content = "",
                     status = MessageStatus.STREAMING.name,
                     createdAt = System.currentTimeMillis(),
+                    // 新用户消息刚插入时用它作父节点；重试时为原用户消息。
+                    parentId = if (userId != 0L) userId else parentId,
                 ),
             )
-            val messages = buildWireHistory(conversation)
+            // 本轮的用户消息（新插入的，或重试时已有的那条）就是历史回溯的起点。
+            val historyLeaf = if (userId != 0L) userId else parentId
+            val messages = buildWireHistory(conversation, historyLeaf)
             val doubaoKeyReady = settingsRepository.get(ProviderId.DOUBAO).apiKey.isNotBlank()
             val enableTool = provider == ProviderId.DOUBAO && doubaoKeyReady
             val llm = providers[provider]
@@ -495,6 +578,7 @@ class ChatRepositoryImpl @Inject constructor(
                     messageDao.updateUsage(assistantId, usagePrompt, usageCompletion)
                     settingsRepository.rememberRecent(provider, model)
                     scheduleMemoryExtraction(conversation, provider, model)
+                    scheduleAutoTitle(conversation, provider, model)
                     terminal = true
                     break
                 }
@@ -509,6 +593,7 @@ class ChatRepositoryImpl @Inject constructor(
                     messageDao.updateUsage(assistantId, usagePrompt, usageCompletion)
                     settingsRepository.rememberRecent(provider, model)
                     scheduleMemoryExtraction(conversation, provider, model)
+                    scheduleAutoTitle(conversation, provider, model)
                     terminal = true
                     break
                 }
@@ -552,7 +637,25 @@ class ChatRepositoryImpl @Inject constructor(
         } finally {
             // 收尾后以数据库为准；这里只清理内存里的流式副本。
             streaming.update { it - conversation.id }
+            // 成功/失败/取消三种收尾都把 leaf 指向本轮助手消息，
+            // 助手被删（空回复取消）时退回用户消息，避免 leaf 悬空。
+            // NonCancellable：取消路径里普通 suspend 调用会立刻再次抛出。
+            withContext(NonCancellable) { markLeaf(conversation.id, assistantId, userId) }
         }
+    }
+
+    /**
+     * 本轮结束后推进分支游标。
+     *
+     * 游标必须指向「刚刚产生的这条回复」，否则下一句会挂到旧分支上。
+     */
+    private suspend fun markLeaf(conversationId: Long, assistantId: Long, userId: Long) {
+        val leaf = when {
+            assistantId != 0L && messageDao.byId(assistantId) != null -> assistantId
+            userId != 0L -> userId
+            else -> 0L
+        }
+        if (leaf > 0L) conversationDao.setLeaf(conversationId, leaf)
     }
 
     /**
@@ -560,6 +663,22 @@ class ChatRepositoryImpl @Inject constructor(
      *
      * 只在记忆开启且本轮有用户消息时触发；用当前会话模型，失败静默。
      */
+    /**
+     * 异步生成 AI 标题（1.3）。
+     *
+     * 首轮结束后触发一次；开关关闭或标题已存在时直接跳过，失败静默。
+     * 分支/重试路径不要额外调用——[AutoTitler.shouldTitle] 自带幂等判断。
+     */
+    private fun scheduleAutoTitle(
+        conversation: ConversationEntity,
+        provider: ProviderId,
+        model: String,
+    ) {
+        appScope.launch {
+            runCatching { autoTitler.maybeTitle(conversation.id, provider, model) }
+        }
+    }
+
     private fun scheduleMemoryExtraction(
         conversation: ConversationEntity,
         provider: ProviderId,
@@ -619,19 +738,22 @@ class ChatRepositoryImpl @Inject constructor(
         prompt: String,
         imported: List<ChatMediaStore.ImportedImage>,
         insertUser: Boolean,
+        parentId: Long,
     ) {
         var assistantId = 0L
+        var userId = 0L
         var terminal = false
         try {
             val now = System.currentTimeMillis()
             if (insertUser) {
-                val userId = messageDao.insert(
+                userId = messageDao.insert(
                     MessageEntity(
                         conversationId = conversation.id,
                         role = Role.USER.name,
                         content = prompt,
                         status = MessageStatus.DONE.name,
                         createdAt = now,
+                        parentId = parentId,
                     ),
                 )
                 if (imported.isNotEmpty()) {
@@ -648,15 +770,15 @@ class ChatRepositoryImpl @Inject constructor(
                         },
                     )
                 }
-                conversationDao.update(
-                    conversation.copy(
-                        title = if (isUntitled(conversation.title)) {
-                            prompt.take(24).ifBlank { context.getString(R.string.draw_message_title) }
-                        } else {
-                            conversation.title
-                        },
-                        updatedAt = now,
-                    ),
+                conversationDao.touch(
+                    id = conversation.id,
+                    title = if (isUntitled(conversation.title)) {
+                        prompt.take(24).ifBlank { context.getString(R.string.draw_message_title) }
+                    } else {
+                        conversation.title
+                    },
+                    model = conversation.model,
+                    updatedAt = now,
                 )
             }
             assistantId = messageDao.insert(
@@ -666,6 +788,7 @@ class ChatRepositoryImpl @Inject constructor(
                     content = context.getString(R.string.drawing_in_progress),
                     status = MessageStatus.STREAMING.name,
                     createdAt = System.currentTimeMillis(),
+                    parentId = if (userId != 0L) userId else parentId,
                 ),
             )
             attachGeneratedImage(assistantId, conversation, prompt, imported)
@@ -692,6 +815,8 @@ class ChatRepositoryImpl @Inject constructor(
                     DRAW_ERROR_PREFIX + (error.message ?: context.getString(R.string.image_gen_failed)),
                 )
             }
+        } finally {
+            withContext(NonCancellable) { markLeaf(conversation.id, assistantId, userId) }
         }
     }
 
@@ -728,11 +853,31 @@ class ChatRepositoryImpl @Inject constructor(
     /**
      * 组装发给模型的历史。
      *
-     * 只按需取最近一段（不再整表加载），条数和字符数都设上限；
-     * 图片单独受数量和编码后体积限制，避免几个大图把请求体撑到几十 MB。
+     * 1.3 起先取激活路径（leaf 沿 parentId 回溯），再沿用条数/字符预算裁剪；
+     * 别的分支的消息绝不发给模型，否则改一句话后模型会同时看到两版答案。
+     *
+     * @param leafId 从哪条消息回溯；编辑旧消息时是新的用户消息，重试时是原用户消息，
+     *   这样历史只含该分支的祖先链，不会把后面分支的内容也带上。
      */
-    private suspend fun buildWireHistory(conversation: ConversationEntity): List<WireMessage> {
-        val recent = messageDao.recentDone(conversation.id, HISTORY_FETCH_LIMIT).asReversed()
+    private suspend fun buildWireHistory(
+        conversation: ConversationEntity,
+        leafId: Long = 0L,
+    ): List<WireMessage> {
+        val path = if (leafId > 0L) {
+            BranchPath.resolveOrdered(
+                items = messageDao.list(conversation.id),
+                leafId = leafId,
+                order = compareBy({ it.createdAt }, { it.id }),
+                idOf = { it.id },
+                parentOf = { it.parentId },
+            )
+        } else {
+            activePath(conversation)
+        }
+        // 保留 FAILED 链路（切换器要能看到），但只把 DONE 发给模型。
+        val recent = path
+            .filter { it.status == MessageStatus.DONE.name }
+            .takeLast(HISTORY_FETCH_LIMIT)
         val window = if (recent.isEmpty()) {
             emptyList()
         } else {
@@ -848,6 +993,7 @@ class ChatRepositoryImpl @Inject constructor(
         systemPrompt = systemPrompt,
         updatedAt = updatedAt,
         thinking = thinking,
+        leafMessageId = leafMessageId,
     )
 
     private fun ConversationSummaryRow.toDomain(): Conversation = Conversation(
@@ -877,6 +1023,7 @@ class ChatRepositoryImpl @Inject constructor(
             promptTokens = promptTokens,
             completionTokens = completionTokens,
             toolTrace = toolTrace,
+            parentId = parentId,
         )
 
     private fun AttachmentEntity.toDomain(): MessageAttachment = MessageAttachment(

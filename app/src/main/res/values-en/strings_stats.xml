@@ -1,0 +1,18 @@
+<resources>
+    <!-- Usage stats -->
+    <string name="stats_title">Usage</string>
+    <string name="stats_total_tokens">Total tokens</string>
+    <string name="stats_total_cost">Est. cost</string>
+    <string name="stats_conversations">Chats</string>
+    <string name="stats_chart_title">Last 14 days</string>
+    <string name="stats_chart_input">Input</string>
+    <string name="stats_chart_output">Output</string>
+    <string name="stats_models_title">By model</string>
+    <string name="stats_empty">No usage yet. After your first message, tokens and estimated cost show up here.</string>
+    <string name="stats_note">Costs are rough estimates from public pricing, for reference only. Free models always cost 0.</string>
+    <string name="stats_entry_title">Usage</string>
+
+    <!-- AI auto title -->
+    <string name="stats_auto_title">AI auto titles</string>
+    <string name="stats_auto_title_note">Uses one low-budget request after the first turn; off keeps the truncated first message.</string>
+</resources>

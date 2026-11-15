@@ -18,6 +18,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,10 +39,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -66,7 +63,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -81,8 +80,16 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.yuguang.lumo.R
 import com.yuguang.lumo.domain.model.VoiceChoice
+import com.yuguang.lumo.ui.backdrop.BackdropHost
 import com.yuguang.lumo.ui.chat.SpeechInput
 import com.yuguang.lumo.ui.chat.VoicePhase
+import com.yuguang.lumo.ui.components.glass
+import com.yuguang.lumo.ui.theme.AiColors
+import com.yuguang.lumo.ui.theme.LocalLumoPalette
+import com.yuguang.lumo.ui.theme.LumoIcons
+import com.yuguang.lumo.ui.theme.LocalMotionEnabled
+import com.yuguang.lumo.ui.theme.LumoType
+import com.yuguang.lumo.ui.theme.Scene
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
@@ -96,6 +103,21 @@ private data class VoicePalette(
     val cardSoft: Color,
     val accent: Color,
     val accentDeep: Color,
+
+    /** 石青：冷色一侧，光球与次要文字。 */
+    val celadon: Color,
+
+    /** 鎏金：只在提示与刻度上用一点。 */
+    val gold: Color,
+
+    /** 压暗层：页面自己的「更深一层墨」。 */
+    val veil: Color,
+
+    /** 宣纸盘：光球的底，比页面纸色再亮一分。 */
+    val disc: Color,
+
+    /** 盘上墨色：波形与模型名，不再用白字压色块。 */
+    val discInk: Color,
     val text: Color,
     val textDim: Color,
     val online: Color,
@@ -106,38 +128,34 @@ private data class VoicePalette(
 @Composable
 private fun rememberVoicePalette(): VoicePalette {
     val cs = MaterialTheme.colorScheme
+    val lumo = LocalLumoPalette.current
     val dark = cs.background.luminance() < 0.5f
-    return if (dark) {
-        VoicePalette(
-            bgTop = cs.background,
-            bgBottom = cs.surfaceContainer,
-            glow = cs.primary,
-            card = cs.surface,
-            cardSoft = cs.surfaceContainerHigh,
-            accent = cs.primary,
-            accentDeep = cs.primary,
-            text = cs.onBackground,
-            textDim = cs.onSurfaceVariant,
-            online = Color(0xFF4ADE80),
-            border = cs.outline,
-            isDark = true,
-        )
-    } else {
-        VoicePalette(
-            bgTop = cs.background,
-            bgBottom = lerp(cs.background, cs.primaryContainer, 0.55f),
-            glow = cs.primary,
-            card = cs.surface,
-            cardSoft = cs.surfaceContainerHigh,
-            accent = cs.primary,
-            accentDeep = cs.primary,
-            text = cs.onBackground,
-            textDim = cs.onSurfaceVariant,
-            online = Color(0xFF0E9F6E),
-            border = cs.outline,
-            isDark = false,
-        )
-    }
+    // 墨线：波形与正文都用它，压暗一层之后依旧读得清。
+    val ink = if (dark) AiColors.DarkInk else AiColors.LightInk
+    val celadon = cs.primary
+    val cinnabar = lumo.cinnabar
+    return VoicePalette(
+        // 背景交给固定的 falls 山水，这里不再自带渐变。
+        bgTop = Color.Transparent,
+        bgBottom = Color.Transparent,
+        glow = celadon,
+        card = lumo.paperGlass.copy(alpha = 0.72f),
+        cardSoft = lumo.paperGlass.copy(alpha = 0.86f),
+        accent = cinnabar,
+        accentDeep = lerp(cinnabar, Color.Black, 0.22f),
+        celadon = celadon,
+        gold = lumo.gold,
+        text = ink,
+        textDim = if (dark) AiColors.DarkSub else AiColors.LightSub,
+        online = AiColors.Success,
+        border = lumo.glassBorder,
+        // 青绿山水的色块比水墨重，压暗层留 0.16 才能让中央光球与按钮站住，
+        // 又不至于把画压成一块灰。
+        veil = ink.copy(alpha = 0.16f),
+        disc = if (dark) Color(0xFF1B1915) else Color(0xFFF5EDDD),
+        discInk = if (dark) Color(0xFFF2EADA) else Color(0xFF1E1B16),
+        isDark = dark,
+    )
 }
 
 /**
@@ -194,11 +212,15 @@ fun VoiceChatScreen(
         if (last >= 0) listState.animateScrollToItem(last)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(palette.bgTop, palette.bgBottom))),
-    ) {
+    // 语音页固定在「青绿」：八张里画面最完整的一张，绢纹不糊；再自己压一层薄墨，
+    // 让宣纸光球浮在山水之上，而不是和褐色绢纹糊在一起。
+    // 注意：SceneryCatalog.forRoute("voice") 仍是 Falls（那是「随页面」的取景），这里只改本页固定景。
+    BackdropHost(scene = Scene.Qinglu) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(palette.veil),
+        )
         // 顶部光晕，给光球一个落点
         Canvas(
             modifier = Modifier
@@ -227,20 +249,27 @@ fun VoiceChatScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    stringResource(R.string.voice_chat_title),
-                    color = palette.text,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                // 标题垫一小片玻璃：山水换到青绿之后画面更满，字直接压上去会花。
+                Box(
+                    modifier = Modifier
+                        .glass(shape = RoundedCornerShape(12.dp), level = 0.9f)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.voice_chat_title),
+                        color = palette.text,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 Spacer(Modifier.weight(1f))
                 StatusChip(connected = state.connected, connecting = state.connecting, palette = palette)
                 if (state.connected) {
                     IconButton(onClick = viewModel::stopSession) {
                         Icon(
-                            Icons.Filled.Stop,
+                            LumoIcons.Stop,
                             contentDescription = stringResource(R.string.voice_stop),
-                            tint = Color(0xFFFF6B81),
+                            tint = palette.accent.copy(alpha = 0.85f),
                         )
                     }
                 }
@@ -254,18 +283,26 @@ fun VoiceChatScreen(
                 ) {
                     VoiceOrb(active = false, connected = false, size = 148.dp, amplitude = level, palette = palette)
                     Spacer(Modifier.height(18.dp))
-                    Text(
-                        stringResource(R.string.voice_idle_title),
-                        color = palette.text,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.voice_idle_subtitle),
-                        color = palette.textDim,
-                        fontSize = 13.sp,
-                    )
+                    // 两行说明放在宣纸玻璃上：淡背景被加强后，直接压山水读不清。
+                    Column(
+                        modifier = Modifier
+                            .glass(shape = RoundedCornerShape(20.dp), level = 0.9f)
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            stringResource(R.string.voice_idle_title),
+                            color = palette.text,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.voice_idle_subtitle),
+                            color = palette.textDim,
+                            fontSize = 12.sp,
+                        )
+                    }
                 }
                 (state.error ?: localError)?.let { error ->
                     Spacer(Modifier.height(14.dp))
@@ -294,46 +331,51 @@ fun VoiceChatScreen(
                 ) {
                     VoiceOrb(active = speakingNow, connected = true, size = 96.dp, amplitude = level, palette = palette)
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        statusText(state, voicePhase),
-                        color = palette.text,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.voice_duration, formatDuration(state.durationSec)),
-                        color = palette.textDim,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
+                    Column(
+                        modifier = Modifier
+                            .glass(shape = RoundedCornerShape(18.dp), level = 0.9f)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            statusText(state, voicePhase),
+                            color = palette.text,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            stringResource(R.string.voice_duration, formatDuration(state.durationSec)),
+                            color = palette.textDim,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                 }
                 if (state.freeTier) {
                     // 免费档常驻一行说明：逐轮对话 + 无端到端实时，避免被误当成卡顿。
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (palette.isDark) Color(0xFF1E2E22) else Color(0xFFE8F5EC),
+                            .padding(top = 8.dp)
+                            .glass(shape = RoundedCornerShape(14.dp), level = 0.9f),
                     ) {
                         Text(
                             stringResource(R.string.free_voice_hint),
-                            color = if (palette.isDark) Color(0xFF9BD8A8) else Color(0xFF1F6B3A),
+                            color = palette.celadon,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         )
                     }
                 } else if (state.fallback) {
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (palette.isDark) Color(0xFF3A2E1A) else Color(0xFFFFF4E0),
+                            .padding(top = 8.dp)
+                            .glass(shape = RoundedCornerShape(14.dp), level = 0.9f),
                     ) {
                         Text(
                             stringResource(R.string.voice_fallback_hint),
-                            color = if (palette.isDark) Color(0xFFFFC46B) else Color(0xFF8A5A00),
+                            color = palette.gold,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         )
@@ -430,7 +472,7 @@ fun VoiceChatScreen(
                                 },
                                 enabled = input.isNotBlank(),
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.send), tint = palette.accent)
+                                Icon(LumoIcons.Send, contentDescription = stringResource(R.string.send), tint = palette.accent)
                             }
                         },
                     )
@@ -500,12 +542,12 @@ fun VoiceChatScreen(
 private fun StatusChip(connected: Boolean, connecting: Boolean, palette: VoicePalette) {
     val dot = when {
         connected -> palette.online
-        connecting -> Color(0xFFFFC46B)
+        connecting -> palette.gold
         else -> palette.textDim
     }
     val bg = when {
         connected -> palette.online.copy(alpha = 0.14f)
-        connecting -> Color(0xFFFFC46B).copy(alpha = 0.16f)
+        connecting -> palette.gold.copy(alpha = 0.16f)
         else -> palette.cardSoft
     }
     val label = when {
@@ -513,9 +555,9 @@ private fun StatusChip(connected: Boolean, connecting: Boolean, palette: VoicePa
         connecting -> stringResource(R.string.voice_status_connecting)
         else -> stringResource(R.string.voice_status_offline)
     }
-    Surface(shape = RoundedCornerShape(20.dp), color = bg) {
+    Box(Modifier.glass(shape = CircleShape, level = 0.9f).background(bg, CircleShape)) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(6.dp).background(dot, CircleShape))
@@ -527,6 +569,7 @@ private fun StatusChip(connected: Boolean, connecting: Boolean, palette: VoicePa
 
 @Composable
 private fun VoiceOrb(active: Boolean, connected: Boolean, size: Dp, amplitude: Float, palette: VoicePalette) {
+    val motion = LocalMotionEnabled.current
     val transition = rememberInfiniteTransition(label = "orb")
     val pulse by transition.animateFloat(
         initialValue = 0f,
@@ -540,41 +583,46 @@ private fun VoiceOrb(active: Boolean, connected: Boolean, size: Dp, amplitude: F
         animationSpec = infiniteRepeatable(animation = tween(1100, easing = LinearEasing), repeatMode = RepeatMode.Restart),
         label = "barPhase",
     )
+    // 朱砂细环：待机是七分朱砂，说话时满色并随音量加粗。
+    val ring = if (active && connected) palette.accent else palette.accent.copy(alpha = 0.72f)
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val r = this.size.minDimension / 2f
-            if (active && connected) {
-                val boost = 1f + amplitude * 0.22f
-                drawCircle(palette.accent.copy(alpha = 0.28f * (1f - pulse)), radius = r * (0.55f + 0.45f * pulse) * boost)
-                drawCircle(palette.accent.copy(alpha = 0.16f * (1f - pulse)), radius = r * (0.72f + 0.28f * pulse) * boost)
-                drawCircle(palette.accent.copy(alpha = 0.10f + 0.18f * amplitude), radius = r * (0.98f + 0.06f * amplitude))
+            val drift = if (motion) pulse else 0.5f
+            // 外圈呼吸光晕：石青 12% 起，只在发声时更亮 —— 不抢宣纸盘的墨。
+            val glow = if (active && connected) {
+                0.12f + 0.10f * (1f - drift) + 0.10f * amplitude
             } else {
-                drawCircle(palette.accent.copy(alpha = 0.10f), radius = r * 0.95f)
+                0.12f + 0.05f * (1f - drift)
             }
-            drawCircle(palette.accent, radius = r * 0.64f)
-            drawCircle(Color.White.copy(alpha = 0.14f), radius = r * 0.60f)
-            // 音量条
-            val bars = 7
-            val centerY = this.size.height * 0.66f
+            drawCircle(palette.celadon.copy(alpha = glow), radius = r * (0.80f + 0.18f * drift))
+            // 宣纸圆盘
+            drawCircle(palette.disc, radius = r * 0.66f)
+            drawCircle(palette.discInk.copy(alpha = 0.06f), radius = r * 0.66f, style = Stroke(width = 1.dp.toPx()))
+            val ringWidth = (2f + if (active && connected) amplitude * 1.6f else 0f) * density
+            drawCircle(ring, radius = r * 0.66f, style = Stroke(width = ringWidth))
+            // 音量条：墨线，九道短笔
+            val bars = 9
+            val centerY = this.size.height * 0.67f
             for (i in 0 until bars) {
-                val wave = abs(sin(barPhase * 2f * PI.toFloat() + i * 0.9f))
+                val phase = if (motion) barPhase * 2f * PI.toFloat() + i * 0.9f else i * 0.9f
+                val wave = abs(sin(phase))
                 val energy = if (active) (0.45f + amplitude * 1.8f) else 0.9f
-                val h = r * (0.10f + 0.22f * wave) * energy
-                val x = this.size.width / 2f + (i - (bars - 1) / 2f) * r * 0.16f
+                val h = r * (0.07f + 0.19f * wave) * energy
+                val x = this.size.width / 2f + (i - (bars - 1) / 2f) * r * 0.125f
                 drawRoundRect(
-                    color = Color.White.copy(alpha = 0.92f),
-                    topLeft = Offset(x - r * 0.035f, centerY - h / 2f),
-                    size = androidx.compose.ui.geometry.Size(r * 0.07f, h),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(r * 0.035f),
+                    color = palette.discInk.copy(alpha = if (active) 0.80f else 0.46f),
+                    topLeft = Offset(x - r * 0.026f, centerY - h / 2f),
+                    size = androidx.compose.ui.geometry.Size(r * 0.052f, h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(r * 0.026f),
                 )
             }
         }
         Text(
             stringResource(R.string.voice_assistant),
-            color = Color.White,
-            fontSize = if (size > 120.dp) 20.sp else 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.offset(y = -(size * 0.10f)),
+            color = palette.discInk.copy(alpha = 0.92f),
+            style = LumoType.poem.copy(fontSize = if (size > 120.dp) 21.sp else 15.sp),
+            modifier = Modifier.offset(y = -(size * 0.11f)),
         )
     }
 }
@@ -600,7 +648,8 @@ private fun Waveform(active: Boolean, amplitude: Float, palette: VoicePalette) {
             val amp = if (active) (0.10f + 0.90f * wave) * (0.45f + amplitude * 1.6f) else 0.08f + 0.10f * wave
             val h = size.height * amp
             drawRoundRect(
-                color = palette.accent.copy(alpha = if (active) 0.92f else 0.32f),
+                // 波形改用墨线：不再是一种「品牌色」，而是画在宣纸上的一道笔痕。
+                color = palette.text.copy(alpha = if (active) 0.82f else 0.26f),
                 topLeft = Offset(i * gap + gap * 0.2f, (size.height - h) / 2f),
                 size = androidx.compose.ui.geometry.Size(gap * 0.6f, h),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(gap * 0.3f),
@@ -663,34 +712,36 @@ private fun Bubble(
 
 @Composable
 private fun StartButton(connecting: Boolean, palette: VoicePalette, onClick: () -> Unit) {
-    Surface(
+    // 墨押按钮：宣纸玻璃底 + 一圈朱砂边，不再是整宽实心色条。
+    val shape = RoundedCornerShape(999.dp)
+    val accent = palette.accent
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .clip(RoundedCornerShape(29.dp))
-            .pointerInput(connecting) {
-                detectTapGestures { if (!connecting) onClick() }
-            },
-        shape = RoundedCornerShape(29.dp),
-        color = palette.accentDeep,
-        contentColor = Color.White,
+            .height(56.dp)
+            .glass(shape = shape, level = if (connecting) 0.55f else 0.95f)
+            .border(1.dp, accent.copy(alpha = if (connecting) 0.32f else 0.78f), shape)
+            .clip(shape)
+            .pointerInput(connecting) { detectTapGestures { if (!connecting) onClick() } },
+        contentAlignment = Alignment.Center,
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             if (connecting) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                Spacer(Modifier.width(8.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(15.dp),
+                    strokeWidth = 2.dp,
+                    color = accent.copy(alpha = 0.85f),
+                )
+                Spacer(Modifier.width(10.dp))
             } else {
-                Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
+                Box(Modifier.size(6.dp).background(accent, CircleShape))
+                Spacer(Modifier.width(10.dp))
             }
             Text(
                 stringResource(if (connecting) R.string.voice_connecting else R.string.voice_start),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = accent,
             )
         }
     }
@@ -704,17 +755,21 @@ private fun QuickChips(
     onToggleText: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 图标 + 短标签：一行能放下三个，长按说话时不用读长句。
         Chip(
-            label = stringResource(R.string.voice_settings_tone) + " · " + stringResource(state.voice.labelRes),
+            icon = LumoIcons.Voice,
+            label = stringResource(state.voice.labelRes),
             palette = palette,
             onClick = onOpenSettings,
         )
         Chip(
+            icon = LumoIcons.Play,
             label = stringResource(R.string.voice_settings_speed, state.speed),
             palette = palette,
             onClick = onOpenSettings,
         )
         Chip(
+            icon = LumoIcons.Chat,
             label = stringResource(R.string.voice_typing),
             palette = palette,
             onClick = onToggleText,
@@ -723,21 +778,18 @@ private fun QuickChips(
 }
 
 @Composable
-private fun Chip(label: String, palette: VoicePalette, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = palette.card,
-        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.6f)),
+private fun Chip(icon: ImageVector, label: String, palette: VoicePalette, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .pointerInput(label) { detectTapGestures { onClick() } },
+            .glass(shape = CircleShape, level = 0.8f)
+            .clip(CircleShape)
+            .pointerInput(label) { detectTapGestures { onClick() } }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text(
-            label,
-            color = palette.accent,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-        )
+        Icon(icon, contentDescription = null, tint = palette.celadon, modifier = Modifier.size(14.dp))
+        Text(label, color = palette.celadon, fontSize = 12.sp)
     }
 }
 
@@ -749,22 +801,17 @@ private fun HoldButton(
     onPress: () -> Boolean,
     onRelease: () -> Unit,
 ) {
-    val gradient = if (listening) {
-        Brush.horizontalGradient(listOf(palette.accent, palette.accentDeep))
-    } else {
-        Brush.horizontalGradient(
-            listOf(
-                palette.accent.copy(alpha = if (palette.isDark) 0.30f else 0.16f),
-                palette.accent.copy(alpha = if (palette.isDark) 0.22f else 0.12f),
-            ),
-        )
-    }
+    // 按住说话：待按是石青描边的宣纸玻璃，按住转朱砂实印（正在录音）。
+    val shape = RoundedCornerShape(999.dp)
+    val accent = if (listening) palette.accent else palette.celadon
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(gradient)
+            .height(60.dp)
+            .glass(shape = shape, level = if (listening) 0.35f else 0.95f)
+            .background(if (listening) palette.accent else Color.Transparent, shape)
+            .border(1.dp, accent.copy(alpha = if (listening) 1f else 0.55f), shape)
+            .clip(shape)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -778,9 +825,9 @@ private fun HoldButton(
         horizontalArrangement = Arrangement.Center,
     ) {
         Icon(
-            Icons.Filled.Mic,
+            LumoIcons.Mic,
             contentDescription = null,
-            tint = if (listening) Color.White else palette.accent,
+            tint = if (listening) palette.disc else palette.celadon,
             modifier = Modifier.size(22.dp),
         )
         Spacer(Modifier.width(8.dp))
@@ -792,9 +839,9 @@ private fun HoldButton(
                     else -> R.string.hold_to_talk
                 },
             ),
-            color = if (listening) Color.White else palette.accent,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
+            color = if (listening) palette.disc else palette.celadon,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -825,10 +872,15 @@ private fun VoiceSettingsSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VoiceChoice.entries.filter { it != VoiceChoice.CLONE }.forEach { choice ->
                     val selected = voice == choice
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (selected) palette.accent else palette.cardSoft,
+                    Box(
                         modifier = Modifier
+                            .glass(shape = RoundedCornerShape(20.dp), level = if (selected) 0.35f else 0.9f)
+                            .background(if (selected) palette.accent else Color.Transparent, RoundedCornerShape(20.dp))
+                            .border(
+                                1.dp,
+                                if (selected) palette.accent else palette.border,
+                                RoundedCornerShape(20.dp),
+                            )
                             .clip(RoundedCornerShape(20.dp))
                             .pointerInput(choice) {
                                 detectTapGestures {
@@ -839,7 +891,7 @@ private fun VoiceSettingsSheet(
                     ) {
                         Text(
                             stringResource(choice.labelRes),
-                            color = if (selected) Color.White else palette.textDim,
+                            color = if (selected) palette.disc else palette.textDim,
                             fontSize = 14.sp,
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
                         )
@@ -862,17 +914,17 @@ private fun VoiceSettingsSheet(
             if (connected) {
                 Text(stringResource(R.string.voice_settings_applied), color = palette.online, fontSize = 12.sp)
             }
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = palette.accentDeep,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .clip(RoundedCornerShape(28.dp))
+                    .glass(shape = RoundedCornerShape(999.dp), level = 0.95f)
+                    .border(1.dp, palette.accent.copy(alpha = 0.78f), RoundedCornerShape(999.dp))
+                    .clip(RoundedCornerShape(999.dp))
                     .pointerInput(Unit) { detectTapGestures { onDismiss() } },
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.voice_settings_done), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.voice_settings_done), color = palette.accent, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

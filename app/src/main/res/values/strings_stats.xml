@@ -1,0 +1,18 @@
+<resources>
+    <!-- 用量统计 -->
+    <string name="stats_title">用量统计</string>
+    <string name="stats_total_tokens">总 token</string>
+    <string name="stats_total_cost">估算费用</string>
+    <string name="stats_conversations">会话数</string>
+    <string name="stats_chart_title">近 14 天用量</string>
+    <string name="stats_chart_input">输入</string>
+    <string name="stats_chart_output">输出</string>
+    <string name="stats_models_title">按模型排行</string>
+    <string name="stats_empty">还没有用量记录。发一条消息后，这里会显示 token 与估算费用。</string>
+    <string name="stats_note">费用为按公开价格估算，仅作参考；免费模型的费用恒为 0。</string>
+    <string name="stats_entry_title">用量统计</string>
+
+    <!-- AI 自动标题 -->
+    <string name="stats_auto_title">AI 自动标题</string>
+    <string name="stats_auto_title_note">首轮后消耗一次低预算请求；关闭则用首条消息截断。</string>
+</resources>

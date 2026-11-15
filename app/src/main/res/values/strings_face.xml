@@ -1,0 +1,48 @@
+<resources>
+    <!-- 1.3：面对面双向同传 -->
+    <string name="tab_face">面对面</string>
+    <string name="face_me">我方</string>
+    <string name="face_other">对方</string>
+    <string name="face_me_hint">你说话时，原文出现在这里，译文出现在对方那一栏。</string>
+    <string name="face_other_hint">对方说话时，译文会放大显示在这里。</string>
+    <string name="face_start">开始面对面</string>
+    <string name="face_stop">结束面对面</string>
+    <string name="face_idle">把手机放在桌上，点麦克风开始</string>
+    <string name="face_connecting">正在连接…</string>
+    <string name="face_listening">正在听，双方交替说话即可</string>
+    <string name="face_ended">已结束，记录已保存</string>
+    <string name="face_swap">交换方向</string>
+    <string name="face_auto">自动</string>
+    <string name="face_locked">已锁定</string>
+    <string name="face_speak">朗读译文</string>
+    <string name="face_summary">本次共 %1$d 句</string>
+    <string name="face_failed">面对面翻译失败</string>
+
+    <!-- 1.4：面对面 · 引擎透明化与交互 -->
+    <string name="face_engine_ast">豆包同声传译 2.0</string>
+    <string name="face_engine_free">免费链路</string>
+    <string name="face_engine_hint_free">识别 → 翻译 → 朗读，每句约 3–9 秒</string>
+    <string name="face_engine_detail">引擎详情</string>
+    <string name="face_engine_row">引擎</string>
+    <string name="face_pair_row">语对</string>
+    <string name="face_asr_row">语音识别</string>
+    <string name="face_translate_row">翻译</string>
+    <string name="face_tts_row">朗读</string>
+    <string name="face_latency_row">延迟</string>
+    <string name="face_asr_ast">端到端同传：识别与翻译在同一会话完成</string>
+    <string name="face_asr_free">免费语音池 · 自动转写</string>
+    <string name="face_translate_ast">AST v2 · volc.service_type.10053</string>
+    <string name="face_translate_free">免费翻译链，按顺序取首个可用模型</string>
+    <string name="face_tts_ast">服务端合成 · %1$s</string>
+    <string name="face_tts_free">自动（百度 / 有道 / 本机）</string>
+    <string name="face_latency_ast">近实时，边说边出</string>
+    <string name="face_latency_free">每句约 3–9 秒</string>
+    <string name="face_stage_recognizing">识别中</string>
+    <string name="face_stage_translating">翻译中</string>
+    <string name="face_history_title">本次对话</string>
+    <string name="face_history_empty">还没有句子</string>
+    <string name="face_history_clear">清空本次</string>
+    <string name="face_open_history">查看全部</string>
+    <string name="face_speaking_now">正在说话</string>
+    <string name="face_engine_switch">正在切换方向…</string>
+</resources>

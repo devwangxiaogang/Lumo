@@ -77,4 +77,7 @@ interface MemoryDao {
 
     @Query("DELETE FROM memories WHERE id NOT IN (SELECT id FROM memories ORDER BY createdAt DESC LIMIT :keep)")
     suspend fun trimTo(keep: Int)
+
+    @Query("DELETE FROM memories")
+    suspend fun clear()
 }

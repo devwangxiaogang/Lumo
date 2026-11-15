@@ -54,6 +54,8 @@ data class SpeechPreferences(
     val liveSource: String = "zh",
     val liveTarget: String = "en",
     val liveVoice: VoiceChoice = VoiceChoice.FEMALE,
+    /** 边生成边朗读：回复流式输出时按句合成播报。默认关闭，升级用户行为不变。 */
+    val autoRead: Boolean = false,
 )
 
 data class TranslationModelOption(val id: String, @StringRes val labelRes: Int)
@@ -161,4 +163,104 @@ fun freeLivePairError(source: String, target: String, voice: VoiceChoice): Int? 
         return R.string.free_pair_unsupported
     }
     return null
+}
+/** 面对面模式里的一句发言：谁说的、原文、译文、语对与时间。 */
+data class FaceTurn(
+    /** "ME" 或 "OTHER"：判定依据是这一句的语言，而不是谁按的按钮。 */
+    val side: String,
+    val sourceText: String,
+    val targetText: String,
+    val from: String,
+    val to: String,
+    val createdAt: Long,
+    /** 这一句还在识别/翻译中（译文未定稿）。 */
+    val pending: Boolean = false,
+)
+
+/**
+ * 面对面双向同传的方向判定。
+ *
+ * 只做中英自动判定：同传链路本身也只保证「一边是中文或英文」，
+ * 其它语种一律按用户当前选的方向走，不猜测。
+ */
+object FaceDirection {
+    const val ME = "ME"
+    const val OTHER = "OTHER"
+
+    /** 中文字符（含全角标点里的汉字区）与拉丁字母的粗分界。 */
+    private fun isCjk(ch: Char): Boolean = ch.code in 0x4E00..0x9FFF
+
+    private fun isLatin(ch: Char): Boolean = ch in 'a'..'z' || ch in 'A'..'Z'
+
+    /**
+     * 依据文本猜语种。
+     *
+     * 两边按**信息单元**计数：汉字逐字算，拉丁按「词」（连续字母串）算。
+     * 若按字母数比，「我去了 Starbucks 买咖啡」会被判成英文——品牌名占了 9 个字母，
+     * 而中文只有 6 个字；按词算则是 6 : 1，符合直觉。
+     *
+     * 两者都为 0（纯数字、标点、空白）时返回 null，让调用方保持当前方向：
+     * 一句话里只有「123」不该把画面翻过去。
+     */
+    fun detect(text: String): String? {
+        var cjk = 0
+        var words = 0
+        var inWord = false
+        text.forEach { ch ->
+            if (isCjk(ch)) {
+                cjk++
+                inWord = false
+            } else if (isLatin(ch)) {
+                if (!inWord) words++
+                inWord = true
+            } else {
+                inWord = false
+            }
+        }
+        if (cjk == 0 && words == 0) return null
+        return if (cjk >= words) "zh" else "en"
+    }
+
+    /**
+     * 这句发言属于哪一侧。
+     *
+     * [myLang] 是「我方语言」：检测结果等于它就是 ME，否则 OTHER（无信号时归到 OTHER，
+     * 因为按住说话的人通常是对方，误判代价更小）。
+     */
+    fun sideOf(text: String, myLang: String): String {
+        val detected = detect(text) ?: return OTHER
+        return if (detected == myLang) ME else OTHER
+    }
+
+    /**
+     * 未锁定时，目标语言就是「另一边」：中文进、英文出，反之亦然。
+     * 锁定（[locked]）时保留用户手选的 [manualTarget]。
+     */
+    fun autoTarget(from: String, locked: Boolean, manualTarget: String): String = when {
+        locked -> manualTarget
+        from == "zh" -> "en"
+        from == "en" -> "zh"
+        else -> manualTarget
+    }
+
+    /** 方向互换：中英互换，其它语种原样返回（同传不支持时才不会做无意义的翻转）。 */
+    fun swap(lang: String): String = when (lang) {
+        "zh" -> "en"
+        "en" -> "zh"
+        else -> lang
+    }
+
+    /** 把一句发言并入列表：同一侧连续发言合并成一段，避免每句都建卡片。 */
+    fun append(turns: List<FaceTurn>, turn: FaceTurn, max: Int = 60): List<FaceTurn> {
+        val last = turns.lastOrNull()
+        val merged = if (last != null && last.side == turn.side && last.pending && turn.pending) {
+            turns.dropLast(1) + last.copy(
+                sourceText = listOf(last.sourceText, turn.sourceText).filter { it.isNotBlank() }.joinToString("\n"),
+                targetText = listOf(last.targetText, turn.targetText).filter { it.isNotBlank() }.joinToString("\n"),
+            )
+        } else {
+            turns + turn
+        }
+        return if (merged.size > max) merged.takeLast(max) else merged
+    }
 }

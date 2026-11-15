@@ -1,5 +1,6 @@
 package com.yuguang.lumo.di
 
+import com.yuguang.lumo.data.ArenaRepositoryImpl
 import com.yuguang.lumo.data.ChatRepositoryImpl
 import com.yuguang.lumo.data.ModelCatalogRepositoryImpl
 import com.yuguang.lumo.data.SettingsRepositoryImpl
@@ -7,6 +8,7 @@ import com.yuguang.lumo.data.remote.CustomProvider
 import com.yuguang.lumo.data.remote.DeepSeekProvider
 import com.yuguang.lumo.data.remote.DoubaoProvider
 import com.yuguang.lumo.data.remote.FreeProvider
+import com.yuguang.lumo.domain.ArenaRepository
 import com.yuguang.lumo.domain.ChatRepository
 import com.yuguang.lumo.domain.LlmProvider
 import com.yuguang.lumo.domain.ModelCatalogRepository
@@ -34,6 +36,10 @@ abstract class BindingModule {
     @Binds
     @Singleton
     abstract fun bindModelCatalogRepository(impl: ModelCatalogRepositoryImpl): ModelCatalogRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindArenaRepository(impl: ArenaRepositoryImpl): ArenaRepository
 
     @Binds
     @IntoMap

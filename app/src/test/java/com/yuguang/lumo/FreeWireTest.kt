@@ -9,6 +9,7 @@ import com.yuguang.lumo.domain.model.ToolCallRequest
 import com.yuguang.lumo.domain.model.WireMessage
 import com.yuguang.lumo.domain.model.freeFallbackChain
 import com.yuguang.lumo.domain.model.freeTranslateChain
+import com.yuguang.lumo.domain.model.freeVisionChain
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -40,16 +41,37 @@ class FreeWireTest {
     }
 
     @Test
-    fun fallbackChainStartsWithAutoRouter() {
-        assertEquals("kilo-auto/free", freeFallbackChain.first())
+    fun fallbackChainStartsWithFastStableModel() {
+        // 自动路由对匿名用户长期 429，不能再当首个兜底。
+        assertEquals("nvidia/nemotron-3.5-lightning:free", freeFallbackChain.first())
         // 链里不能有重复，否则降级会白跑一轮。
         assertEquals(freeFallbackChain.size, freeFallbackChain.distinct().size)
+    }
+
+    @Test
+    fun fallbackChainSkipsModelsThatAlwaysFail() {
+        listOf(
+            "inclusionai/ling-3.2-flash:free",    // 整日额度
+            "liquid/lfm-3-1.7b:free",             // 1.7B 质量不足
+            "nvidia/nemotron-3-ultra-550b-a55b:free", // 偶发 60 秒首字
+        ).forEach { assertTrue(it, it !in freeFallbackChain) }
     }
 
     @Test
     fun translateChainUsesSameFreeModels() {
         assertTrue(freeTranslateChain.isNotEmpty())
         assertTrue(freeTranslateChain.all { it.endsWith(":free") || it == "kilo-auto/free" })
+    }
+
+    @Test
+    fun visionChainContainsOnlyVisionModels() {
+        assertTrue(freeVisionChain.isNotEmpty())
+        // 视觉链里的每个模型都必须被静态能力表标成可识图，否则图片请求会直接 4xx。
+        freeVisionChain.forEach { id ->
+            val option = ProviderId.FREE.models.firstOrNull { it.id == id }
+            assertTrue("$id 未在静态清单中声明", option != null)
+            assertTrue("$id 未标记 vision", option!!.vision)
+        }
     }
 
     @Test

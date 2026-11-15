@@ -9,6 +9,7 @@ import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.SelectedModel
 import com.yuguang.lumo.domain.model.SpeechPreferences
 import com.yuguang.lumo.domain.model.TtsEngine
+import com.yuguang.lumo.domain.model.freeModelBlocklist
 import com.yuguang.lumo.domain.model.VoiceChoice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +48,10 @@ class SettingsRepositoryImpl @Inject constructor(
         val provider = prefs.getString(RECENT_PROVIDER, null)
             ?.let { name -> runCatching { ProviderId.valueOf(name) }.getOrNull() }
         val model = prefs.getString(RECENT_MODEL, null)?.takeIf { it.isNotBlank() }
-        if (provider != null && model != null) return SelectedModel(provider, model)
+        // 记住的模型后来被实测剔除（或上游下线）时，不能继续当默认，否则新建对话直接失败。
+        val stillUsable = provider != null && model != null &&
+            !(provider == ProviderId.FREE && model in freeModelBlocklist)
+        if (stillUsable) return SelectedModel(provider!!, model!!)
         // 没有任何密钥时默认走免费车道：装完就能聊，不让「先去申请 Key」挡住第一次使用。
         val configured = ProviderId.entries.firstOrNull {
             it.requiresKey && get(it).apiKey.isNotBlank()
@@ -83,6 +87,12 @@ class SettingsRepositoryImpl @Inject constructor(
         prefs.edit().putBoolean(MEMORY_ENABLED, enabled).apply()
     }
 
+    override suspend fun autoTitleEnabled(): Boolean = prefs.getBoolean(AUTO_TITLE, true)
+
+    override suspend fun setAutoTitleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(AUTO_TITLE, enabled).apply()
+    }
+
     private fun writeSpeech(preferences: SpeechPreferences) {
         val saved = preferences.copy(translationModel = preferences.translationModel.trim())
         speechState.value = saved
@@ -97,6 +107,7 @@ class SettingsRepositoryImpl @Inject constructor(
             .putString(LIVE_SOURCE, saved.liveSource)
             .putString(LIVE_TARGET, saved.liveTarget)
             .putString(LIVE_VOICE, saved.liveVoice.name)
+            .putBoolean(AUTO_READ, saved.autoRead)
             .apply()
     }
 
@@ -149,6 +160,7 @@ class SettingsRepositoryImpl @Inject constructor(
                 liveSource = prefs.getString(LIVE_SOURCE, null)?.takeIf { it.isNotBlank() } ?: defaults.liveSource,
                 liveTarget = prefs.getString(LIVE_TARGET, null)?.takeIf { it.isNotBlank() } ?: defaults.liveTarget,
                 liveVoice = enumOr(prefs.getString(LIVE_VOICE, null), defaults.liveVoice),
+                autoRead = prefs.getBoolean(AUTO_READ, defaults.autoRead),
             )
         }.getOrElse {
             resetPreferences()
@@ -181,6 +193,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val LIVE_SOURCE = "liveSourceLang"
         const val LIVE_TARGET = "liveTargetLang"
         const val LIVE_VOICE = "liveVoice"
+        const val AUTO_READ = "autoRead"
         const val MEMORY_ENABLED = "memoryEnabled"
+        const val AUTO_TITLE = "autoTitleEnabled"
     }
 }

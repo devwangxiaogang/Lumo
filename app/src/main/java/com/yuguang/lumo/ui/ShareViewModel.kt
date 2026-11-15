@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.data.IncomingShare
 import com.yuguang.lumo.data.IncomingShareBus
+import com.yuguang.lumo.data.TranslateSeedBus
 import com.yuguang.lumo.domain.ChatRepository
 import com.yuguang.lumo.domain.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,7 @@ sealed interface ShareTarget {
 class ShareViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val shareBus: IncomingShareBus,
+    private val translateSeedBus: TranslateSeedBus,
     private val chatRepository: ChatRepository,
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
@@ -54,6 +56,11 @@ class ShareViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** 斜杠指令 /translate：把文本交给翻译页预填。 */
+    fun seedTranslate(text: String) {
+        translateSeedBus.offer(text)
     }
 
     private suspend fun newConversation(): Long {

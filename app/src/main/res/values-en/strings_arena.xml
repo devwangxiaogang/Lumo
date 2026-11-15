@@ -1,0 +1,33 @@
+<resources>
+    <!-- 1.3: multi-model arena -->
+    <string name="arena_entry">Arena</string>
+    <string name="arena_title">Model arena</string>
+    <string name="arena_prompt_hint">Ask one question, let two models answer side by side</string>
+    <string name="arena_prompt_empty">Type a question first</string>
+    <string name="arena_fight">Fight</string>
+    <string name="arena_stop">Stop</string>
+    <string name="arena_model_a">Model A</string>
+    <string name="arena_model_b">Model B</string>
+    <string name="arena_stat_ttft">First token %1$s</string>
+    <string name="arena_stat_tokens">%1$d tokens</string>
+    <string name="arena_stat_cost">Cost %1$s</string>
+    <string name="arena_total_tokens">%1$d tokens in total</string>
+    <string name="arena_vote_a">A is better</string>
+    <string name="arena_vote_b">B is better</string>
+    <string name="arena_vote_tie">Tie</string>
+    <string name="arena_history">History</string>
+    <string name="arena_history_empty">No arena runs yet. Type a question and tap Fight.</string>
+    <string name="arena_replay">Run again</string>
+    <string name="arena_clear_history">Clear history</string>
+    <string name="arena_clear_confirm">Clear all arena history? This cannot be undone.</string>
+    <string name="arena_delete_title">Delete this run</string>
+    <string name="arena_delete_body">This cannot be undone.</string>
+    <string name="arena_delete">Delete</string>
+    <string name="arena_cancel">Cancel</string>
+    <string name="arena_side_failed">This side failed</string>
+    <string name="arena_stopped">Stopped</string>
+    <string name="arena_waiting">Waiting for the first token…</string>
+    <string name="arena_show_reasoning">Show reasoning</string>
+    <string name="arena_hide_reasoning">Hide reasoning</string>
+    <string name="arena_viewing_history">Viewing history</string>
+</resources>

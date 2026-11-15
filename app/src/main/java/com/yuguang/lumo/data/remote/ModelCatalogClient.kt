@@ -4,6 +4,8 @@ import com.yuguang.lumo.domain.model.ModelCapabilities
 import com.yuguang.lumo.domain.model.ModelChoice
 import com.yuguang.lumo.domain.model.ModelGroup
 import com.yuguang.lumo.domain.model.ProviderId
+import com.yuguang.lumo.domain.model.freeFallbackChain
+import com.yuguang.lumo.domain.model.freeModelBlocklist
 import com.yuguang.lumo.domain.model.modelChoices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -108,7 +110,9 @@ class ModelCatalogClient @Inject constructor(
      */
     private fun mapKilo(items: List<RemoteModelDto>): List<ModelChoice> {
         val free = items.filter { item ->
-            item.free == true || item.id.endsWith(":free") || item.id == "kilo-auto/free"
+            val freeTagged = item.free == true || item.id.endsWith(":free") || item.id == "kilo-auto/free"
+            // 远端只保证「声明免费」，不保证「现在能调」：实测不可用的进黑名单。
+            freeTagged && item.id !in freeModelBlocklist
         }
         return free.map { item ->
             val vision = item.resolvedInputModalities
@@ -125,8 +129,10 @@ class ModelCatalogClient @Inject constructor(
                 reasoning = item.supportsReasoning(),
             )
         }.sortedWith(
-            compareBy<ModelChoice> { it.id != "kilo-auto/free" }
-                .thenByDescending { it.contextWindow },
+            // 顺序按 freeFallbackChain 的实测优先级；链外的按上下文从大到小。
+            compareBy<ModelChoice> { model ->
+                freeFallbackChain.indexOf(model.id).let { if (it < 0) freeFallbackChain.size else it }
+            }.thenByDescending { it.contextWindow },
         )
     }
 

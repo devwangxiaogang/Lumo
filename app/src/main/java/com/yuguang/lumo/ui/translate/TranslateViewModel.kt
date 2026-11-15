@@ -18,8 +18,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.R
+import com.yuguang.lumo.data.PhotoTranslator
 import com.yuguang.lumo.data.SpeechReader
 import com.yuguang.lumo.data.SpeechRouter
+import com.yuguang.lumo.data.TranslateSeedBus
 import com.yuguang.lumo.data.local.TranslationDao
 import com.yuguang.lumo.data.local.TranslationEntity
 import com.yuguang.lumo.data.remote.AstEvent
@@ -35,6 +37,8 @@ import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.domain.model.SpeechPreferences
 import com.yuguang.lumo.domain.model.VoiceChoice
 import com.yuguang.lumo.domain.model.freeLivePairError
+import com.yuguang.lumo.domain.model.FaceDirection
+import com.yuguang.lumo.domain.model.FaceTurn
 import com.yuguang.lumo.domain.model.livePairError
 import com.yuguang.lumo.ui.chat.VoicePhase
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -49,7 +53,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class TranslateTab { Text, Live }
+enum class TranslateTab { Text, Live, Photo, Face }
 
 enum class LivePhase { Idle, Connecting, Listening, Ended }
 
@@ -78,6 +82,27 @@ data class TranslateUiState(
     val voicePhase: VoicePhase = VoicePhase.Idle,
     /** 当前档位；翻译页据此提示免费链路的语种与延迟边界。 */
     val tier: com.yuguang.lumo.domain.model.SpeechTier = com.yuguang.lumo.domain.model.SpeechTier.PAID,
+    /** 图片翻译：所选图片、逐行结果与本次使用的模型信息。 */
+    val photoUri: android.net.Uri? = null,
+    val photoLines: List<com.yuguang.lumo.data.PhotoLine> = emptyList(),
+    val photoRunning: Boolean = false,
+    val photoModel: String = "",
+    val photoElapsed: Long = 0,
+    val photoFallback: Boolean = false,
+    /** 面对面：已定稿的发言对，按发生顺序。 */
+    val faceTurns: List<FaceTurn> = emptyList(),
+    /** 面对面的会话状态；Listening 表示麦克风正开着。 */
+    val facePhase: LivePhase = LivePhase.Idle,
+    /** 我方语言：决定每句话归到「我方」还是「对方」卡片。 */
+    val faceMyLang: String = "zh",
+    /** 本次会话的输入语言（谁在被听）。 */
+    val faceFrom: String = "zh",
+    /** 本次会话的输出语言；未锁定时恒等于 faceFrom 的另一边。 */
+    val faceTo: String = "en",
+    /** 锁定目标语言：关闭自动配对后用户可以手选。 */
+    val faceLocked: Boolean = false,
+    /** 正在识别/翻译、还没定稿的一句。 */
+    val facePending: FaceTurn? = null,
 )
 
 @HiltViewModel
@@ -91,6 +116,8 @@ class TranslateViewModel @Inject constructor(
     private val freeRecognizer: FreeAsrClient,
     private val freeTranslator: FreeTranslateClient,
     private val freeInterpreter: FreeInterpreterClient,
+    private val photoTranslator: PhotoTranslator,
+    private val translateSeedBus: TranslateSeedBus,
     private val speechReader: SpeechReader,
 ) : ViewModel() {
     var state by mutableStateOf(TranslateUiState())
@@ -100,6 +127,9 @@ class TranslateViewModel @Inject constructor(
     private var liveAudio: Channel<ByteArray>? = null
     private var autoTranslateJob: Job? = null
     private var lastTranslatedInput: String? = null
+    private var photoJob: Job? = null
+    private var faceJob: Job? = null
+    private var faceAudio: Channel<ByteArray>? = null
     private val player = LivePlayer()
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private var previousAudioMode = AudioManager.MODE_NORMAL
@@ -125,6 +155,13 @@ class TranslateViewModel @Inject constructor(
         viewModelScope.launch {
             speechReader.speaking.collect { state = state.copy(speakingKey = it) }
         }
+        // 斜杠指令 /translate 预填：只消费一次，并立即翻译。
+        val seed = translateSeedBus.consume()
+        if (!seed.isNullOrBlank()) {
+            state = state.copy(tab = TranslateTab.Text, input = seed, output = "", message = null)
+            matchLanguagesFromText(seed)
+            translate(save = true)
+        }
     }
 
     fun selectTab(tab: TranslateTab) {
@@ -135,9 +172,79 @@ class TranslateViewModel @Inject constructor(
         state = state.copy(tab = tab, message = null)
     }
 
+    /** 图片翻译：选定图片（只预览，不立即请求，省额度也省等待）。 */
+    fun selectPhoto(uri: android.net.Uri?) {
+        if (uri == null) return
+        state = state.copy(
+            photoUri = uri,
+            photoLines = emptyList(),
+            photoModel = "",
+            photoElapsed = 0,
+            photoFallback = false,
+            message = null,
+        )
+    }
+
+    /** 图片翻译：发起一次视觉模型请求，并把结果写入翻译记录。 */
+    fun translatePhoto() {
+        val uri = state.photoUri
+        if (uri == null) {
+            state = state.copy(message = context.getString(R.string.photo_need_image))
+            return
+        }
+        if (state.photoRunning) return
+        val target = state.textTarget.ifBlank { "en" }
+        val label = languageLabel(target)
+        photoJob?.cancel()
+        photoJob = viewModelScope.launch {
+            state = state.copy(photoRunning = true, message = null)
+            photoTranslator.translate(uri, target, label).fold(
+                onSuccess = { result ->
+                    state = state.copy(
+                        photoRunning = false,
+                        photoLines = result.lines,
+                        photoModel = result.model,
+                        photoElapsed = result.elapsedMs,
+                        photoFallback = result.fallback,
+                    )
+                    runCatching {
+                        translations.insert(
+                            TranslationEntity(
+                                kind = "PHOTO",
+                                // 空串表示「自动检测」，记录详情按语言表显示为「自动」。
+                                sourceLang = "",
+                                targetLang = target,
+                                sourceText = result.sourceText,
+                                targetText = result.targetText,
+                                option = result.model,
+                                createdAt = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    if (error is CancellationException) throw error
+                    state = state.copy(
+                        photoRunning = false,
+                        message = error.message?.takeIf { it.isNotBlank() }
+                            ?: context.getString(R.string.photo_translate_failed),
+                    )
+                },
+            )
+        }
+    }
+
+    private fun languageLabel(code: String): String {
+        val entry = com.yuguang.lumo.domain.model.textLanguages.firstOrNull { it.code == code }
+        return if (entry != null) context.getString(entry.labelRes) else code
+    }
+
     fun leaveLive() {
         stopLive()
-        if (speechReader.speaking.value?.startsWith("chat:") != true) speechReader.stop()
+        // 对话页的朗读（手动与流式）不属于翻译页，离开时不要顺手掐掉。
+        val speaking = speechReader.speaking.value
+        val ownedByChat = speaking?.startsWith("chat:") == true || speaking?.startsWith("stream:") == true
+        if (!ownedByChat) speechReader.stop()
     }
 
     fun updateInput(value: String) {
@@ -478,6 +585,234 @@ class TranslateViewModel @Inject constructor(
         restoreAudioRoute()
     }
 
+    /**
+     * 面对面：开始一轮双向同传。
+     *
+     * 与 [toggleLive] 共用同一套采集与同传引擎，但落点不同：这里把每句定稿拆成
+     * 「我方 / 对方」两张卡片，并在结束时写成一条 kind = "FACE" 的历史记录。
+     * 方向在一段会话内固定（同传流是单向的），换方向用 [swapFace]，会重启这一段流。
+     */
+    fun startFace() {
+        if (state.facePhase == LivePhase.Listening || state.facePhase == LivePhase.Connecting) {
+            stopFace()
+            return
+        }
+        val myLang = state.liveSourceLang
+        val to = FaceDirection.autoTarget(myLang, state.faceLocked, state.liveTargetLang)
+        state = state.copy(
+            faceMyLang = myLang,
+            faceFrom = myLang,
+            faceTo = to,
+            faceTurns = emptyList(),
+            facePending = null,
+            message = null,
+        )
+        launchFace(myLang, to)
+    }
+
+    /** 停止面对面：保存记录，清掉未定稿的一句。 */
+    fun stopFace() {
+        val audio = faceAudio
+        faceAudio = null
+        audio?.close()
+        val job = faceJob
+        faceJob = null
+        val pending = state.facePending
+        val turns = if (pending != null && (pending.sourceText.isNotBlank() || pending.targetText.isNotBlank())) {
+            state.faceTurns + pending.copy(pending = false)
+        } else {
+            state.faceTurns
+        }
+        state = state.copy(facePhase = if (turns.isEmpty()) LivePhase.Idle else LivePhase.Ended, facePending = null, faceTurns = turns)
+        job?.cancel()
+        player.stop()
+        restoreAudioRoute()
+        if (turns.isNotEmpty()) saveFaceRecord(turns)
+    }
+
+    /** 换方向：中文进英文出 ↔ 英文进中文出。运行中会重启这一段流。 */
+    fun swapFace() {
+        val from = FaceDirection.swap(state.faceFrom)
+        val to = FaceDirection.autoTarget(from, state.faceLocked, state.liveTargetLang)
+        // 方向一换，正在听的那半句就再也收不到译文了：先按当前方向定格，
+        // 免得用户说完一句就点交换、这句话凭空消失。
+        val pending = state.facePending
+        val keptTurns = if (pending != null && (pending.sourceText.isNotBlank() || pending.targetText.isNotBlank())) {
+            FaceDirection.append(state.faceTurns, pending.copy(pending = false))
+        } else {
+            state.faceTurns
+        }
+        state = state.copy(
+            faceFrom = from,
+            faceTo = to,
+            faceLocked = true,
+            faceTurns = keptTurns,
+            facePending = null,
+        )
+        if (state.facePhase == LivePhase.Listening || state.facePhase == LivePhase.Connecting) {
+            val audio = faceAudio
+            faceAudio = null
+            audio?.close()
+            faceJob?.cancel()
+            faceJob = null
+            launchFace(from, to)
+        }
+    }
+
+    /** 锁定/解锁自动配对：解锁时立刻按我方语言重算目标语言。 */
+    fun toggleFaceLock() {
+        val locked = !state.faceLocked
+        val to = FaceDirection.autoTarget(state.faceFrom, locked, state.liveTargetLang)
+        state = state.copy(faceLocked = locked, faceTo = to)
+    }
+
+    fun clearFaceTurns() {
+        state = state.copy(faceTurns = emptyList(), facePending = null, facePhase = LivePhase.Idle)
+    }
+
+    private fun launchFace(from: String, to: String) {
+        faceJob = viewModelScope.launch {
+            val preferences = settingsRepository.speech()
+            val freeLane = SpeechRouter.live(preferences) == SpeechRouter.LiveRoute.FREE_PIPELINE
+            val blocked = if (freeLane) {
+                freeLivePairError(from, to, state.liveVoice)
+            } else {
+                livePairError(from, to, state.liveVoice)
+            }
+            if (blocked != null) {
+                state = state.copy(message = context.getString(blocked))
+                return@launch
+            }
+            val config = settingsRepository.get(ProviderId.DOUBAO)
+            val key = config.speechApiKey.trim()
+            val appId = config.speechAppId.trim()
+            val accessToken = config.speechAccessToken.trim()
+            if (!freeLane && key.isEmpty() && (appId.isEmpty() || accessToken.isEmpty())) {
+                state = state.copy(message = context.getString(R.string.need_speech_key))
+                return@launch
+            }
+            val audio = Channel<ByteArray>(capacity = 32)
+            faceAudio = audio
+            useSpeakerForTranslation()
+            state = state.copy(facePhase = LivePhase.Connecting, facePending = null, message = null)
+            val opened = kotlinx.coroutines.CompletableDeferred<AudioRecord>()
+            val capture = launch(Dispatchers.IO) { capture(audio, opened) }
+            try {
+                val record = opened.await()
+                try {
+                    if (freeLane) {
+                        freeInterpreter.interpret(
+                            sourceLanguage = from,
+                            targetLanguage = to,
+                            voice = state.liveVoice,
+                            audio = audio,
+                            isAudible = { player.isAudible() },
+                        ) { event -> applyFace(event, from, to) }
+                    } else {
+                        interpreter.interpret(
+                            apiKey = key,
+                            sourceLanguage = from,
+                            targetLanguage = to,
+                            speakerId = state.liveVoice.speakerId,
+                            audio = audio,
+                            appId = appId,
+                            accessToken = accessToken,
+                        ) { event -> applyFace(event, from, to) }
+                    }
+                } finally {
+                    audio.close()
+                    runCatching { record.stop() }
+                }
+            } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                state = state.copy(message = context.getString(R.string.live_failed))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                state = state.copy(message = error.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.face_failed))
+            } finally {
+                audio.close()
+                capture.join()
+                if (faceAudio === audio) {
+                    faceAudio = null
+                    faceJob = null
+                }
+            }
+        }
+    }
+
+    /** 同传事件 → 两张卡片。定稿句按语言判定归到「我方」或「对方」。 */
+    private fun applyFace(event: AstEvent, from: String, to: String) {
+        // PCM 每 20 ms 来一块，和 UI 状态无关：先摘出去，别让每秒几十次的
+        // withMutableSnapshot 只为把一段音频丢给播放器。
+        if (event is AstEvent.Audio) {
+            player.write(event.pcm)
+            return
+        }
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            when (event) {
+                AstEvent.Started -> state = state.copy(facePhase = LivePhase.Listening)
+                AstEvent.Finished -> Unit
+                AstEvent.Quiet -> Unit
+                is AstEvent.SourcePartial -> {
+                    val current = state.facePending
+                    val side = current?.side ?: FaceDirection.sideOf(event.text, state.faceMyLang)
+                    state = state.copy(
+                        facePending = (current ?: FaceTurn(side, "", "", from, to, System.currentTimeMillis(), pending = true))
+                            .copy(sourceText = event.text),
+                    )
+                }
+                is AstEvent.SourceFinal -> {
+                    val side = FaceDirection.sideOf(event.text, state.faceMyLang)
+                    val current = state.facePending
+                    state = state.copy(
+                        facePending = FaceTurn(
+                            side = side,
+                            sourceText = event.text,
+                            targetText = current?.targetText.orEmpty(),
+                            from = from,
+                            to = to,
+                            createdAt = current?.createdAt ?: System.currentTimeMillis(),
+                            pending = true,
+                        ),
+                    )
+                }
+                is AstEvent.TargetPartial -> {
+                    val current = state.facePending
+                        ?: FaceTurn(FaceDirection.OTHER, "", "", from, to, System.currentTimeMillis(), pending = true)
+                    state = state.copy(facePending = current.copy(targetText = event.text))
+                }
+                is AstEvent.TargetFinal -> {
+                    val current = state.facePending
+                    if (current != null) {
+                        val done = current.copy(targetText = event.text, pending = false)
+                        state = state.copy(
+                            faceTurns = FaceDirection.append(state.faceTurns, done),
+                            facePending = null,
+                        )
+                    }
+                }
+                is AstEvent.Audio -> Unit
+            }
+        }
+    }
+
+    private fun saveFaceRecord(turns: List<FaceTurn>) {
+        viewModelScope.launch {
+            turns.groupBy { it.side }.forEach { (side, group) ->
+                translations.insert(
+                    TranslationEntity(
+                        kind = "FACE",
+                        sourceLang = group.first().from,
+                        targetLang = group.first().to,
+                        sourceText = group.joinToString("\n") { it.sourceText },
+                        targetText = group.joinToString("\n") { it.targetText },
+                        option = if (side == FaceDirection.ME) "ME" else "OTHER",
+                        createdAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
+    }
     fun reuseTextRecord(record: TranslationEntity) {
         if (record.kind != "TEXT") return
         autoTranslateJob?.cancel()
@@ -517,6 +852,9 @@ class TranslateViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        faceAudio?.close()
+        faceJob?.cancel()
+        photoJob?.cancel()
         liveAudio?.close()
         liveJob?.cancel()
         restoreAudioRoute()
@@ -525,6 +863,11 @@ class TranslateViewModel @Inject constructor(
     }
 
     private fun applyLive(event: AstEvent) {
+        // 同 applyFace：音频块直接给播放器，不进快照。
+        if (event is AstEvent.Audio) {
+            player.write(event.pcm)
+            return
+        }
         androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
             applyLiveNow(event)
         }

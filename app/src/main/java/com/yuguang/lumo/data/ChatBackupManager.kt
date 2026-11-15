@@ -51,14 +51,19 @@ class ChatBackupManager @Inject constructor(
                     model = conversation.model,
                     systemPrompt = conversation.systemPrompt,
                     updatedAt = conversation.updatedAt,
+                    // 1.3：备份保存整棵消息树（leaf 游标 + 每条消息的 parentId），
+                    // 导入后分支可以原样还原，不像导出那样只留激活路径。
+                    leafMessageId = conversation.leafMessageId,
                     messages = messageDao.list(conversation.id).map { message ->
                         BackupMessage(
+                            id = message.id,
                             role = message.role,
                             content = message.content,
                             reasoning = message.reasoning,
                             status = message.status,
                             error = message.error,
                             createdAt = message.createdAt,
+                            parentId = message.parentId,
                             attachments = attachmentDao.forMessage(message.id).map { attachment ->
                                 val entry = mediaEntries.getOrPut(attachment.localPath) {
                                     "media/${mediaEntries.size}_${File(attachment.localPath).name}"
@@ -134,6 +139,10 @@ class ChatBackupManager @Inject constructor(
                     updatedAt = conversation.updatedAt,
                 ),
             )
+            // 备份里的 id 是新库不存在的旧 id：先落一条 id 映射，再把 parentId 换成本库的 id。
+            // 老备份没有 parentId 字段（默认 0），导入后就是一条单链，行为与 1.2 一致。
+            val idMap = HashMap<Long, Long>()
+            var pendingLeafMessageId = 0L
             conversation.messages.forEach { message ->
                 val messageId = messageDao.insert(
                     MessageEntity(
@@ -144,8 +153,11 @@ class ChatBackupManager @Inject constructor(
                         status = message.status,
                         error = message.error,
                         createdAt = message.createdAt,
+                        parentId = if (message.parentId > 0L) idMap[message.parentId] ?: 0L else 0L,
                     ),
                 )
+                idMap[message.id] = messageId
+                pendingLeafMessageId = message.id
                 val attachments = message.attachments.mapNotNull { attachment ->
                     val path = entryToFile[attachment.entry] ?: return@mapNotNull null
                     AttachmentEntity(
@@ -160,6 +172,11 @@ class ChatBackupManager @Inject constructor(
                 }
                 if (attachments.isNotEmpty()) attachmentDao.insertAll(attachments)
             }
+            // 游标也要跟着新 id 走；备份里没有（老备份）时退回最后一条消息。
+            val leaf = idMap[conversation.leafMessageId]
+                ?: idMap[pendingLeafMessageId]
+                ?: 0L
+            if (leaf > 0L) conversationDao.setLeaf(conversationId, leaf)
         }
         parsed.conversations.size
     }
@@ -178,6 +195,8 @@ class ChatBackupManager @Inject constructor(
         val model: String,
         val systemPrompt: String,
         val updatedAt: Long,
+        /** 当前激活分支的叶子；老备份没有这个字段，导入后按单链处理。 */
+        val leafMessageId: Long = 0,
         val messages: List<BackupMessage> = emptyList(),
     )
 
@@ -189,6 +208,10 @@ class ChatBackupManager @Inject constructor(
         val status: String,
         val error: String = "",
         val createdAt: Long,
+        /** 备份内的原始消息 id，用来重建消息树；老备份没有时为 0。 */
+        val id: Long = 0,
+        /** 父消息在备份里的 id；0 表示一条链的起点。 */
+        val parentId: Long = 0,
         val attachments: List<BackupAttachment> = emptyList(),
     )
 

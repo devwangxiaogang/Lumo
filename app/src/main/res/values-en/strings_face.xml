@@ -1,0 +1,48 @@
+<resources>
+    <!-- 1.3: face-to-face interpretation -->
+    <string name="tab_face">Face to face</string>
+    <string name="face_me">Me</string>
+    <string name="face_other">Them</string>
+    <string name="face_me_hint">When you speak, the transcript shows here and the translation appears on their side.</string>
+    <string name="face_other_hint">When they speak, the translation shows here in large text.</string>
+    <string name="face_start">Start face to face</string>
+    <string name="face_stop">Stop face to face</string>
+    <string name="face_idle">Put the phone on the table, then tap the mic</string>
+    <string name="face_connecting">Connecting…</string>
+    <string name="face_listening">Listening — take turns speaking</string>
+    <string name="face_ended">Stopped. The record is saved.</string>
+    <string name="face_swap">Swap direction</string>
+    <string name="face_auto">Auto</string>
+    <string name="face_locked">Locked</string>
+    <string name="face_speak">Read translation</string>
+    <string name="face_summary">%1$d sentences this session</string>
+    <string name="face_failed">Face-to-face translation failed</string>
+
+    <!-- 1.4: face to face — engine transparency and interaction -->
+    <string name="face_engine_ast">Doubao AST 2.0</string>
+    <string name="face_engine_free">Free pipeline</string>
+    <string name="face_engine_hint_free">Recognize → translate → speak, about 3–9 s a turn</string>
+    <string name="face_engine_detail">Engine details</string>
+    <string name="face_engine_row">Engine</string>
+    <string name="face_pair_row">Languages</string>
+    <string name="face_asr_row">Speech recognition</string>
+    <string name="face_translate_row">Translation</string>
+    <string name="face_tts_row">Speech</string>
+    <string name="face_latency_row">Latency</string>
+    <string name="face_asr_ast">End-to-end session: recognition and translation in one stream</string>
+    <string name="face_asr_free">Free ASR pool · auto transcribe</string>
+    <string name="face_translate_ast">AST v2 · volc.service_type.10053</string>
+    <string name="face_translate_free">Free chain — first healthy model wins</string>
+    <string name="face_tts_ast">Server-side synthesis · %1$s</string>
+    <string name="face_tts_free">Auto (Baidu / Youdao / local)</string>
+    <string name="face_latency_ast">Near real-time, speaks while listening</string>
+    <string name="face_latency_free">About 3–9 s a turn</string>
+    <string name="face_stage_recognizing">Recognizing</string>
+    <string name="face_stage_translating">Translating</string>
+    <string name="face_history_title">This session</string>
+    <string name="face_history_empty">No turns yet</string>
+    <string name="face_history_clear">Clear</string>
+    <string name="face_open_history">View all</string>
+    <string name="face_speaking_now">Speaking now</string>
+    <string name="face_engine_switch">Switching direction…</string>
+</resources>
