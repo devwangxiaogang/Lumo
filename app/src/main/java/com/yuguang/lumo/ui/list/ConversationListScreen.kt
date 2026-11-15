@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,8 +24,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -79,7 +76,6 @@ import com.yuguang.lumo.data.local.SearchHitRow
 import com.yuguang.lumo.domain.model.Conversation
 import com.yuguang.lumo.domain.model.ProviderId
 import com.yuguang.lumo.ui.backdrop.BackdropHost
-import com.yuguang.lumo.ui.components.AnimatedEntrance
 import com.yuguang.lumo.ui.components.GlassCard
 import com.yuguang.lumo.ui.components.GlassTone
 import com.yuguang.lumo.ui.components.InkDivider
@@ -273,10 +269,9 @@ fun ConversationListScreen(
                 if (conversations.isNotEmpty()) {
                     if (pinned.isNotEmpty()) {
                         item { GroupSeal(stringResource(R.string.conversation_group_pinned), "顶") }
-                        itemsIndexed(pinned, key = { _, it -> "pinned-${it.id}" }) { index, conversation ->
+                        items(pinned, key = { "pinned-${it.id}" }) { conversation ->
                             ConversationRow(
                                 conversation = conversation,
-                                index = index,
                                 menuOpen = menuFor == conversation.id,
                                 onOpen = { open(conversation) },
                                 onLongPress = { menuFor = conversation.id },
@@ -284,15 +279,15 @@ fun ConversationListScreen(
                                 onTogglePin = { togglePin(conversation) },
                                 onRename = { askRename(conversation) },
                                 onDelete = { askDelete(conversation) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
                     if (today.isNotEmpty()) {
                         item { GroupSeal(stringResource(R.string.conversation_group_today), "今") }
-                        itemsIndexed(today, key = { _, it -> "today-${it.id}" }) { index, conversation ->
+                        items(today, key = { "today-${it.id}" }) { conversation ->
                             ConversationRow(
                                 conversation = conversation,
-                                index = index,
                                 menuOpen = menuFor == conversation.id,
                                 onOpen = { open(conversation) },
                                 onLongPress = { menuFor = conversation.id },
@@ -300,15 +295,15 @@ fun ConversationListScreen(
                                 onTogglePin = { togglePin(conversation) },
                                 onRename = { askRename(conversation) },
                                 onDelete = { askDelete(conversation) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
                     if (earlier.isNotEmpty()) {
                         item { GroupSeal(stringResource(R.string.conversation_group_earlier), "旧") }
-                        itemsIndexed(earlier, key = { _, it -> "earlier-${it.id}" }) { index, conversation ->
+                        items(earlier, key = { "earlier-${it.id}" }) { conversation ->
                             ConversationRow(
                                 conversation = conversation,
-                                index = index,
                                 menuOpen = menuFor == conversation.id,
                                 onOpen = { open(conversation) },
                                 onLongPress = { menuFor = conversation.id },
@@ -316,6 +311,7 @@ fun ConversationListScreen(
                                 onTogglePin = { togglePin(conversation) },
                                 onRename = { askRename(conversation) },
                                 onDelete = { askDelete(conversation) },
+                                modifier = Modifier.animateItem(),
                             )
                         }
                     }
@@ -626,14 +622,14 @@ private fun SearchField(
     }
 }
 
-private val ART_CARD_HEIGHT = 128.dp
+private val ART_CARD_HEIGHT = 120.dp
 
 /**
  * 四张艺术卡：新对话 / 翻译 / 语音 / 擂台。
  *
  * 替代原来五个等宽小方块 —— 方块只说明「有个按钮」，卡片说明「这是一扇门」。
- * 横排可滑动：条尾固定露 24dp peek，再压一层纸色渐隐，一眼看出右边还有一张，
- * 又不会像改造前那样露出半张空玻璃（那看起来像渲染没画完）。
+ * 四张按可用宽度等分，一屏放得下：早先做成横滑 + 条尾 peek，第四张（擂台）永远
+ * 只露 24dp，看起来像没画完，所以改回整排。
  */
 @Composable
 private fun ArtStrip(
@@ -642,16 +638,12 @@ private fun ArtStrip(
     onVoice: () -> Unit,
     onArena: () -> Unit,
 ) {
-    val strip = rememberScrollState()
-    val palette = LocalLumoPalette.current
-    // 三张整卡 + 24dp peek：卡片宽度按可用宽度反算，第四张永远只露一条边。
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(ART_CARD_HEIGHT)) {
-        val gap = 12.dp
-        val cardWidth = ((maxWidth - gap * 3 - 24.dp) / 3f).coerceIn(88.dp, 124.dp)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val gap = 10.dp
+        // 392dp 屏：可用 360dp → 每张 82.5dp，字号 12sp 的标签仍放得下。
+        val cardWidth = (maxWidth - gap * 3) / 4f
         Row(
-            modifier = Modifier
-                .fillMaxHeight()
-                .horizontalScroll(strip),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
             ArtCard(
@@ -684,28 +676,9 @@ private fun ArtStrip(
                 onClick = onArena,
             )
         }
-        // 条尾 24dp 纸色渐隐：第四张卡在这层雾里化开，不再有「空面板」的观感。
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .width(26.dp)
-                .fillMaxHeight()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to palette.paper.copy(alpha = 0f),
-                        1f to palette.paper.copy(alpha = 0.96f),
-                    ),
-                ),
-        )
     }
 }
 
-/**
- * 96×128dp 艺术卡：一张压暗的山水底图 + 由薄到厚的纸色蒙层，图标在上、标签压在下。
- *
- * 底图 alpha 0.44 是折中：再淡就看不见画，再浓字就压不住；
- * 蒙层用一个三段渐变而不是整块玻璃，是为了让上半幅还有景、下半幅能读字。
- */
 @Composable
 private fun ArtCard(
     icon: ImageVector,
@@ -834,7 +807,6 @@ private fun GroupSeal(title: String, seal: String) {
 @Composable
 private fun ConversationRow(
     conversation: Conversation,
-    index: Int,
     menuOpen: Boolean,
     onOpen: () -> Unit,
     onLongPress: () -> Unit,
@@ -842,13 +814,16 @@ private fun ConversationRow(
     onTogglePin: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalLumoPalette.current
     val pinnedLabel = stringResource(R.string.conversation_group_pinned)
     val shape = RoundedCornerShape(20.dp)
 
-    AnimatedEntrance(index = index) {
-        Box {
+    // 行内不再用逐条淡入：LazyColumn 每滚出一条新行都要重放 0–400ms 延迟 + 220ms 淡入，
+    // 看起来就像「滑一下有几条不见了」。改用列表自己的 animateItem（插入/排序动画），
+    // 滚动时内容始终是终态。
+    Box(modifier = modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -912,18 +887,17 @@ private fun ConversationRow(
                 }
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = onDismissMenu) {
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(if (conversation.pinned) R.string.unpin else R.string.pin))
-                    },
-                    onClick = onTogglePin,
-                )
-                DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = onRename)
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
-                    onClick = onDelete,
-                )
-            }
+            DropdownMenuItem(
+                text = {
+                    Text(stringResource(if (conversation.pinned) R.string.unpin else R.string.pin))
+                },
+                onClick = onTogglePin,
+            )
+            DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = onRename)
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
+                onClick = onDelete,
+            )
         }
     }
 }
