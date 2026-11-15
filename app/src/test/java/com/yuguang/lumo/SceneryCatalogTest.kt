@@ -2,6 +2,7 @@ package com.yuguang.lumo
 
 import com.yuguang.lumo.ui.theme.Scene
 import com.yuguang.lumo.ui.theme.SceneryCatalog
+import com.yuguang.lumo.ui.theme.Skin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -17,21 +18,31 @@ import org.junit.Test
 class SceneryCatalogTest {
 
     @Test
-    fun `八个场景的 id 与顺序固定`() {
-        assertEquals(8, SceneryCatalog.all.size)
+    fun `两套皮肤各八个场景且 id 与顺序固定`() {
+        // 山水那八幅的 id 与顺序是上线过的，用户手选过的 scene_id 存在偏好里，不能改。
+        assertEquals(8, SceneryCatalog.allFor(Skin.Lumos).size)
         assertEquals(
             listOf("cloud", "stream", "snow_bamboo", "wind_bamboo", "falls", "winter", "peaks", "qinglu"),
-            SceneryCatalog.all.map { it.id },
+            SceneryCatalog.allFor(Skin.Lumos).map { it.id },
         )
-        assertEquals(8, SceneryCatalog.all.map { it.id }.toSet().size)
+        assertEquals(
+            listOf(
+                "arcane_castle", "arcane_hall", "arcane_forest", "arcane_lake",
+                "arcane_tower", "arcane_potions", "arcane_library", "arcane_nebula",
+            ),
+            SceneryCatalog.allFor(Skin.Arcane).map { it.id },
+        )
+        // all = 两套皮肤的并集，且不重复。
+        assertEquals(16, SceneryCatalog.all.size)
+        assertEquals(16, SceneryCatalog.all.map { it.id }.toSet().size)
     }
 
     @Test
     fun `每个场景都有日夜两张不同资源`() {
         val days = SceneryCatalog.all.map { it.dayRes }
         val nights = SceneryCatalog.all.map { it.nightRes }
-        assertEquals("白天图不应重复", 8, days.toSet().size)
-        assertEquals("夜晚图不应重复", 8, nights.toSet().size)
+        assertEquals("白天图不应重复", 16, days.toSet().size)
+        assertEquals("夜晚图不应重复", 16, nights.toSet().size)
         SceneryCatalog.all.forEach { scene ->
             assertTrue("${scene.id} 的白天资源为空", scene.dayRes != 0)
             assertTrue("${scene.id} 的夜晚资源为空", scene.nightRes != 0)

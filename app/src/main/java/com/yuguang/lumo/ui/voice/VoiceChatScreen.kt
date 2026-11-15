@@ -84,12 +84,15 @@ import com.yuguang.lumo.ui.backdrop.BackdropHost
 import com.yuguang.lumo.ui.chat.SpeechInput
 import com.yuguang.lumo.ui.chat.VoicePhase
 import com.yuguang.lumo.ui.components.glass
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.AiColors
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.LumoIcons
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.LumoType
 import com.yuguang.lumo.ui.theme.Scene
+import com.yuguang.lumo.ui.theme.SceneryCatalog
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
@@ -132,8 +135,10 @@ private fun rememberVoicePalette(): VoicePalette {
     val dark = cs.background.luminance() < 0.5f
     // 墨线：波形与正文都用它，压暗一层之后依旧读得清。
     val ink = if (dark) AiColors.DarkInk else AiColors.LightInk
+    val arcane = LocalSkin.current == Skin.Arcane
+    // 弧光不用石青也不用朱砂：光球的呼吸圈走星蓝（primary）、盘面取午夜蓝、盘上字取金。
     val celadon = cs.primary
-    val cinnabar = lumo.cinnabar
+    val cinnabar = if (arcane) lumo.gold else lumo.cinnabar
     return VoicePalette(
         // 背景交给固定的 falls 山水，这里不再自带渐变。
         bgTop = Color.Transparent,
@@ -151,9 +156,17 @@ private fun rememberVoicePalette(): VoicePalette {
         border = lumo.glassBorder,
         // 青绿山水的色块比水墨重，压暗层留 0.16 才能让中央光球与按钮站住，
         // 又不至于把画压成一块灰。
-        veil = ink.copy(alpha = 0.16f),
-        disc = if (dark) Color(0xFF1B1915) else Color(0xFFF5EDDD),
-        discInk = if (dark) Color(0xFFF2EADA) else Color(0xFF1E1B16),
+        veil = ink.copy(alpha = if (arcane) 0.12f else 0.16f),
+        disc = when {
+            arcane -> if (dark) Color(0xFF141A2E) else Color(0xFFF8F2E3)
+            dark -> Color(0xFF1B1915)
+            else -> Color(0xFFF5EDDD)
+        },
+        discInk = when {
+            arcane -> if (dark) Color(0xFFF0D793) else Color(0xFF1E2230)
+            dark -> Color(0xFFF2EADA)
+            else -> Color(0xFF1E1B16)
+        },
         isDark = dark,
     )
 }
@@ -214,8 +227,8 @@ fun VoiceChatScreen(
 
     // 语音页固定在「青绿」：八张里画面最完整的一张，绢纹不糊；再自己压一层薄墨，
     // 让宣纸光球浮在山水之上，而不是和褐色绢纹糊在一起。
-    // 注意：SceneryCatalog.forRoute("voice") 仍是 Falls（那是「随页面」的取景），这里只改本页固定景。
-    BackdropHost(scene = Scene.Qinglu) {
+    // 固定一幅最有沉浸感的景：山水用青绿，弧光用天文塔。路由取景另走 forRoute，互不影响。
+    BackdropHost(scene = SceneryCatalog.heroFor("voice", LocalSkin.current)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

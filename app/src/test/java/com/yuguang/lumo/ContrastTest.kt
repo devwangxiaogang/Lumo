@@ -147,6 +147,105 @@ class ContrastTest {
         assertAtLeast(4.5, contrast(0xFFA9B5AC, darkSub), "深色次级/level 1 卡片")
     }
 
+    // ---- 弧光学院皮肤（magic skin）：同一套三层合成模型再算一遍 ----
+
+    /**
+     * 弧光的两套纸面与玻璃参数（见 AiTheme.kt 的 LightArcanePalette / DarkArcanePalette）：
+     * - 浅色「晨雾羊皮纸」：paper #EDE4D0、paperGlass #F8F2E3（玻璃填充再向白 lerp 0.22 → #FAF5E9，α0.76/0.82）
+     * - 深色「午夜星穹」：paper #0B1020、paperGlass #1A2138，α0.62/0.80
+     * 蒙版用 scrimMid（浅 0.08 / 深 0.10），场景色调仍取古画素材的最亮/最暗两端。
+     */
+    private val arcaneLightPaper = 0xFFEDE4D0
+    private val arcaneLightInk = 0xFF1E2230
+    private val arcaneLightSub = 0xFF4C5060
+    private val arcaneLightGlassFill = 0xFFFAF5E9
+    private val arcaneDarkPaper = 0xFF0B1020
+    private val arcaneDarkInk = 0xFFEFE9D8
+    private val arcaneDarkSub = 0xFFB0B3CC
+    private val arcaneDarkGlassFill = 0xFF1A2138
+    private val arcaneScrimMid = 0.08
+    private val arcaneDarkScrimMid = 0.10
+    private val arcaneAccentLight = 0xFFA8402C
+    private val arcaneAccentDark = 0xFFD2643F
+    private val arcaneGoldLight = 0xFFB8892F
+    private val arcaneGoldDark = 0xFFD6AE5C
+
+    @Test
+    fun `弧光浅色 墨色与次级文字在羊皮纸上达标`() {
+        assertAtLeast(4.5, contrast(arcaneLightInk, arcaneLightPaper), "弧光浅色 墨/纸")
+        assertAtLeast(4.5, contrast(arcaneLightSub, arcaneLightPaper), "弧光浅色 次级/纸")
+        assertEquals("弧光浅色 墨/纸", 12.52, contrast(arcaneLightInk, arcaneLightPaper), 0.05)
+        assertEquals("弧光浅色 次级/纸", 6.33, contrast(arcaneLightSub, arcaneLightPaper), 0.05)
+    }
+
+    @Test
+    fun `弧光深色 月白与次级文字在星穹上达标`() {
+        assertAtLeast(4.5, contrast(arcaneDarkInk, arcaneDarkPaper), "弧光深色 月白/星穹")
+        assertAtLeast(4.5, contrast(arcaneDarkSub, arcaneDarkPaper), "弧光深色 次级/星穹")
+        assertEquals("弧光深色 月白/星穹", 15.61, contrast(arcaneDarkInk, arcaneDarkPaper), 0.05)
+        assertEquals("弧光深色 次级/星穹", 9.17, contrast(arcaneDarkSub, arcaneDarkPaper), 0.05)
+    }
+
+    @Test
+    fun `弧光正文叠在最亮与最暗场景上都过 4_5`() {
+        val lightOnBright = cardOverScene(
+            arcaneLightGlassFill, lightGlassAlphaMin, arcaneLightPaper, arcaneScrimMid, brightestSceneTone,
+        )
+        val lightOnDark = cardOverScene(
+            arcaneLightGlassFill, lightGlassAlphaMin, arcaneLightPaper, arcaneScrimMid, darkestSceneTone,
+        )
+        assertEquals("弧光浅色墨/最亮场景", 13.82, contrast(arcaneLightInk, lightOnBright), 0.05)
+        assertEquals("弧光浅色墨/最暗场景", 9.23, contrast(arcaneLightInk, lightOnDark), 0.05)
+
+        val darkOnBright = cardOverScene(
+            arcaneDarkGlassFill, darkGlassAlphaMin, arcaneDarkPaper, arcaneDarkScrimMid, brightestSceneTone,
+        )
+        val darkOnDark = cardOverScene(
+            arcaneDarkGlassFill, darkGlassAlphaMin, arcaneDarkPaper, arcaneDarkScrimMid, darkestSceneTone,
+        )
+        assertEquals("弧光深色月白/最亮场景", 5.14, contrast(arcaneDarkInk, darkOnBright), 0.05)
+        assertEquals("弧光深色月白/最暗场景", 13.42, contrast(arcaneDarkInk, darkOnDark), 0.05)
+        assertAtLeast(4.5, contrast(arcaneDarkInk, darkOnBright), "弧光深色月白/最亮场景上的卡片")
+    }
+
+    @Test
+    fun `弧光次级文字同样需要 level 0_8 以上的玻璃`() {
+        // 浅色：level 0 已经 4.67，最低一档也过线；深色 level 0 只有 3.02，必须落在 level 1。
+        val lightThin = cardOverScene(
+            arcaneLightGlassFill, lightGlassAlphaMin, arcaneLightPaper, arcaneScrimMid, darkestSceneTone,
+        )
+        val darkThin = cardOverScene(
+            arcaneDarkGlassFill, darkGlassAlphaMin, arcaneDarkPaper, arcaneDarkScrimMid, brightestSceneTone,
+        )
+        assertAtLeast(4.5, contrast(arcaneLightSub, lightThin), "弧光浅色次级/第一档玻璃")
+        assertTrue(
+            "弧光深色次级在最薄玻璃上不该被当成达标：${"%.2f".format(contrast(arcaneDarkSub, darkThin))}",
+            contrast(arcaneDarkSub, darkThin) < 4.5,
+        )
+        val lightFull = cardOverScene(
+            arcaneLightGlassFill, lightGlassAlphaFull, arcaneLightPaper, arcaneScrimMid, darkestSceneTone,
+        )
+        val darkFull = cardOverScene(
+            arcaneDarkGlassFill, darkGlassAlphaFull, arcaneDarkPaper, arcaneDarkScrimMid, brightestSceneTone,
+        )
+        assertEquals("弧光浅色次级/level 1", 5.29, contrast(arcaneLightSub, lightFull), 0.05)
+        assertEquals("弧光深色次级/level 1", 4.82, contrast(arcaneDarkSub, darkFull), 0.05)
+        assertAtLeast(4.5, contrast(arcaneDarkSub, darkFull), "弧光深色次级/level 1 卡片")
+    }
+
+    @Test
+    fun `弧光余烬与古金的用法边界`() {
+        // 余烬（tertiary）两套皮肤都能当正文色。
+        assertAtLeast(4.5, contrast(arcaneAccentLight, arcaneLightPaper), "余烬/羊皮纸")
+        assertAtLeast(4.5, contrast(arcaneAccentDark, arcaneDarkPaper), "余烬/星穹")
+        // 古金在深色下够亮（可做正文/图标），浅色下只有 2.49 —— 只做图形（菱徽、星点、细线），不做正文。
+        assertAtLeast(4.5, contrast(arcaneGoldDark, arcaneDarkPaper), "古金/星穹")
+        assertTrue(
+            "古金在浅色下不应被当成正文色：${"%.2f".format(contrast(arcaneGoldLight, arcaneLightPaper))}",
+            contrast(arcaneGoldLight, arcaneLightPaper) < 3.0,
+        )
+    }
+
     // ---- 玻璃卡「浮起」的结构断言（r2 真机灰阶实测反推） ----
 
     /** 灰度均值：和真机截图统计口径一致（三通道等权）。 */

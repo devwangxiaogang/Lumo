@@ -2,6 +2,7 @@ package com.yuguang.lumo.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -60,7 +62,9 @@ import androidx.lifecycle.viewModelScope
 import com.yuguang.lumo.ui.prefs.ThemeMode
 import com.yuguang.lumo.ui.prefs.UiPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import coil.compose.AsyncImage
 import com.yuguang.lumo.BuildConfig
@@ -82,9 +86,16 @@ import com.yuguang.lumo.ui.components.TierBadge
 import com.yuguang.lumo.ui.components.glass
 import com.yuguang.lumo.ui.theme.AiColors
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LumoType
 import com.yuguang.lumo.ui.theme.Scene
 import com.yuguang.lumo.ui.theme.SceneryCatalog
+import android.widget.Toast
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import com.yuguang.lumo.ui.theme.IconSwitcher
+import com.yuguang.lumo.ui.theme.Skin
 
 /** 单个服务商的接入信息与默认模型。 */
 @Composable
@@ -606,6 +617,7 @@ fun VoicePrefsScreen(    onBack: () -> Unit,
 @HiltViewModel
 class AppearanceViewModel @Inject constructor(
     private val uiPreferences: UiPreferences,
+    @ApplicationContext private val app: Context,
 ) : ViewModel() {
     val mode: StateFlow<ThemeMode> = uiPreferences.themeMode
 
@@ -614,8 +626,23 @@ class AppearanceViewModel @Inject constructor(
     val dailyScene: StateFlow<Boolean> = uiPreferences.dailyScene
     val motion: StateFlow<Boolean> = uiPreferences.motion
 
+    /** 当前皮肤；换皮肤会顺带把桌面图标换掉（见 [setSkin]）。 */
+    val skin: StateFlow<Skin> = uiPreferences.skin
+
     fun setMode(mode: ThemeMode) {
         uiPreferences.setThemeMode(mode)
+    }
+
+    /**
+     * 换皮肤 = 换色板 + 换八幅景 + 换桌面图标。
+     *
+     * 图标切换放在这里而不是外层：皮肤只有这一个入口，两件事必须同时发生，
+     * 否则会出现「界面是弧光、图标还是朱砂印」的半套状态。
+     */
+    fun setSkin(skin: Skin) {
+        if (uiPreferences.skin.value == skin) return
+        uiPreferences.setSkin(skin)
+        viewModelScope.launch { IconSwitcher.applyAsync(app, skin) }
     }
 
     fun setScene(id: String?) = uiPreferences.setScene(id)
@@ -635,8 +662,11 @@ fun AppearanceScreen(
     val pickedSceneId by viewModel.scene.collectAsStateWithLifecycle()
     val dailyScene by viewModel.dailyScene.collectAsStateWithLifecycle()
     val motion by viewModel.motion.collectAsStateWithLifecycle()
-    val picked = SceneryCatalog.byId(pickedSceneId)
+    val skin by viewModel.skin.collectAsStateWithLifecycle()
+    val picked = SceneryCatalog.byId(pickedSceneId, skin)
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val context = LocalContext.current
+    val skinLabel = stringResource(skin.labelRes)
     SettingPageScaffold(
         title = stringResource(R.string.settings_section_appearance),
         onBack = onBack,
@@ -649,10 +679,50 @@ fun AppearanceScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // 皮肤是这一页最上面那个决定：它一换，色板、八幅景、桌面图标一起换。
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SealedSectionTitle(stringResource(R.string.appearance_scene_title), mark = "山")
+                SealedSectionTitle(stringResource(R.string.appearance_skin_title), mark = "皮")
                 Text(
-                    stringResource(R.string.appearance_scene_desc),
+                    stringResource(R.string.appearance_skin_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Skin.entries.forEach { item ->
+                        SkinCard(
+                            skin = item,
+                            selected = item == skin,
+                            dark = dark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                viewModel.setSkin(item)
+                                // 图标在部分桌面要等下一次回到桌面才刷新，先给一句话交代。
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.skin_icon_switched, skinLabelOf(context, item)),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    }
+                }
+            }
+            // 幻境皮肤下这一段的文案也要跟着换：不能在弧光里说「山水」。
+            val arcaneSkin = skin == Skin.Arcane
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SealedSectionTitle(
+                    stringResource(
+                        if (arcaneSkin) R.string.appearance_scene_title_arcane
+                        else R.string.appearance_scene_title,
+                    ),
+                    mark = if (arcaneSkin) "幻" else "山",
+                )
+                Text(
+                    stringResource(
+                        if (arcaneSkin) R.string.appearance_scene_desc_arcane
+                        else R.string.appearance_scene_desc,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp),
@@ -666,7 +736,8 @@ fun AppearanceScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
                 ) {
-                    items(SceneryCatalog.all, key = { it.id }) { scene ->
+                    // 画廊只列当前皮肤的八幅：混着放会让「这幅画属于哪套皮肤」变得难判断。
+                    items(SceneryCatalog.allFor(skin), key = { it.id }) { scene ->
                         SceneCard(
                             scene = scene,
                             selected = picked?.id == scene.id,
@@ -684,14 +755,20 @@ fun AppearanceScreen(
             ) {
                 ToggleRow(
                     title = stringResource(R.string.appearance_motion),
-                    desc = stringResource(R.string.appearance_motion_desc),
+                    desc = stringResource(
+                        if (arcaneSkin) R.string.appearance_motion_desc_arcane
+                        else R.string.appearance_motion_desc,
+                    ),
                     checked = motion,
                     onCheckedChange = viewModel::setMotion,
                 )
                 InkDivider(alpha = 0.45f)
                 ToggleRow(
                     title = stringResource(R.string.appearance_daily),
-                    desc = stringResource(R.string.appearance_daily_desc),
+                    desc = stringResource(
+                        if (arcaneSkin) R.string.appearance_daily_desc_arcane
+                        else R.string.appearance_daily_desc,
+                    ),
                     checked = dailyScene,
                     onCheckedChange = viewModel::setDailyScene,
                 )
@@ -720,6 +797,85 @@ fun AppearanceScreen(
 }
 
 /** 一张山水卡：120×200dp，按主题取昼/夜资源，选中态是朱砂描边 + 右上角印。 */
+/**
+ * 皮肤卡：左边一小块「材质预览」（用该皮肤的第一幅景 + 自己的纸色玻璃），
+ * 右边名字与一句说明。不做真实截图 —— 预览图会随皮肤变，截死了反而误导。
+ */
+@Composable
+private fun SkinCard(
+    skin: Skin,
+    selected: Boolean,
+    dark: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val palette = LocalLumoPalette.current
+    val preview = SceneryCatalog.allFor(skin).first()
+    val night = dark
+    Box(
+        modifier = modifier
+            .height(104.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .glass(shape = RoundedCornerShape(18.dp), level = if (selected) 1f else 0.85f)
+            .clickable(role = Role.RadioButton, onClick = onClick),
+    ) {
+        // 左半：一幅该皮肤的景，右侧渐隐到玻璃底上。
+        AsyncImage(
+            model = if (night) preview.nightRes else preview.dayRes,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(0.52f),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(0.52f)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(Color.Transparent, palette.paperGlass.copy(alpha = 0.92f)),
+                    ),
+                ),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxWidth(0.52f)
+                .padding(end = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = stringResource(skin.labelRes),
+                style = LumoType.seal.copy(fontSize = 14.sp),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                text = stringResource(skin.blurbRes),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+            )
+        }
+        if (selected) {
+            // 选中：右上角一枚朱砂（弧光下是金）小圆点，比整卡描边安静。
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(palette.cinnabar),
+            )
+        }
+    }
+}
+
+/** 取皮肤名字给 toast 用（Compose 的 stringResource 不能在回调里调）。 */
+private fun skinLabelOf(context: android.content.Context, skin: Skin): String =
+    context.getString(skin.labelRes)
+
 @Composable
 private fun SceneCard(
     scene: Scene,
@@ -850,14 +1006,17 @@ private fun ToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // 轨道跟皮肤走：山水石青、弧光星蓝（固定值会让弧光里漂着一枚青绿开关）。
+        val arcane = LocalSkin.current == Skin.Arcane
+        val trackColor = if (arcane) MaterialTheme.colorScheme.primary else Color(0xFF4E8791)
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             // 轨道用固定石青：深色主题里 colorScheme.primary 会偏薄荷，和山水不对味。
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color(0xFFFFF6E9),
-                checkedTrackColor = Color(0xFF4E8791),
-                checkedBorderColor = Color(0xFF4E8791),
+                checkedTrackColor = trackColor,
+                checkedBorderColor = trackColor,
                 uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 uncheckedTrackColor = Color.Transparent,
                 uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
@@ -1217,7 +1376,10 @@ fun AboutScreen(
                     // 素材署名从页脚那块独立玻璃搬进来：原来同一句出处写了两遍。
                     SettingsRow(
                         title = stringResource(R.string.settings_about_credits),
-                        subtitle = stringResource(R.string.credits_source),
+                        subtitle = stringResource(
+                            if (LocalSkin.current == Skin.Arcane) R.string.credits_source_arcane
+                            else R.string.credits_source,
+                        ),
                     )
                     InkDivider(alpha = 0.45f)
                     SettingsRow(

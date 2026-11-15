@@ -87,10 +87,12 @@ import com.yuguang.lumo.ui.components.glass
 import com.yuguang.lumo.ui.localizedSummary
 import com.yuguang.lumo.ui.model.ModelPickerDialog
 import com.yuguang.lumo.ui.shell.AppSection
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.LumoIcons
 import com.yuguang.lumo.ui.theme.LumoType
 import com.yuguang.lumo.ui.theme.Scene
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.SceneryCatalog
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -107,15 +109,26 @@ private val HOME_POEMS = intArrayOf(
 )
 
 /** 按「第几天」取诗，不用 java.time（minSdk 24 上不必引 desugar）。 */
-private fun dailyPoemRes(epochMillis: Long = System.currentTimeMillis()): Int =
-    HOME_POEMS[((epochMillis / 86_400_000L) % HOME_POEMS.size).toInt().let { if (it < 0) 0 else it }]
+/** 弧光学院的题词：与山水那四句同架构，一天换一句。 */
+private val ARCANE_MOTTOS = intArrayOf(
+    R.string.home_motto_arcane_1,
+    R.string.home_motto_arcane_2,
+    R.string.home_motto_arcane_3,
+)
+
+private fun dailyPoemRes(
+    epochMillis: Long = System.currentTimeMillis(),
+    skin: Skin = Skin.Lumos,
+): Int {
+    val pool = if (skin == Skin.Arcane) ARCANE_MOTTOS else HOME_POEMS
+    val index = ((epochMillis / 86_400_000L) % pool.size).toInt().let { if (it < 0) 0 else it }
+    return pool[index]
+}
 
 /** 会话缩略图取哪幅景：按 id 定，同一条会话永远是同一幅，不会跳。 */
-private fun sceneForConversation(id: Long): Scene {
-    val all = SceneryCatalog.all
-    val index = ((id % all.size) + all.size) % all.size
-    return all[index.toInt()]
-}
+@Composable
+private fun sceneForConversation(id: Long): Scene =
+    SceneryCatalog.forConversation(id, LocalSkin.current)
 
 /** 深色主题下换夜景底图：跟 GlassTopBar 用同一个判据，不额外引依赖。 */
 @Composable
@@ -143,7 +156,8 @@ fun ConversationListScreen(
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { viewModel.refreshStarting() }
 
-    val poemRes = remember { dailyPoemRes() }
+    val skin = LocalSkin.current
+    val poemRes = remember(skin) { dailyPoemRes(skin = skin) }
 
     val filtered = conversations.filter { conversation ->
         if (query.isBlank()) return@filter true
@@ -172,7 +186,7 @@ fun ConversationListScreen(
         menuFor = null
     }
 
-    BackdropHost(scene = SceneryCatalog.forRoute("conversations")) {
+    BackdropHost(scene = SceneryCatalog.forRoute("conversations", LocalSkin.current)) {
         Scaffold(
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -526,18 +540,29 @@ private fun ProfileMenuRow(icon: ImageVector, label: String, onClick: () -> Unit
 @Composable
 private fun WordmarkSeal(modifier: Modifier = Modifier) {
     val palette = LocalLumoPalette.current
+    // 弧光院：与桌面图标同构的午夜蓝牌 + 金线边 + 金字；山水仍是朱砂方印。
+    val arcane = LocalSkin.current == Skin.Arcane
+    val plateColor = if (arcane) Color(0xFF1B2242) else palette.cinnabar
+    val inkColor = if (arcane) Color(0xFFF0D793) else palette.sealInk
     Box(
         modifier = modifier
             .width(28.dp)
             .height(46.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(palette.cinnabar),
+            .clip(RoundedCornerShape(if (arcane) 8.dp else 6.dp))
+            .background(plateColor)
+            .then(
+                if (arcane) {
+                    Modifier.border(1.dp, Color(0xFFD6AE5C).copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "語\n光",
             style = LumoType.seal.copy(fontSize = 10.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
-            color = palette.sealInk,
+            color = inkColor,
             textAlign = TextAlign.Center,
         )
     }
@@ -638,6 +663,8 @@ private fun ArtStrip(
     onVoice: () -> Unit,
     onArena: () -> Unit,
 ) {
+    // 弧光皮肤换一组底图，山水皮肤维持原来的三幅 + 擂台。
+    val stripScenes = SceneryCatalog.primary(LocalSkin.current)
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val gap = 10.dp
         // 392dp 屏：可用 360dp → 每张 82.5dp，字号 12sp 的标签仍放得下。
@@ -649,7 +676,7 @@ private fun ArtStrip(
             ArtCard(
                 icon = LumoIcons.Chat,
                 label = stringResource(R.string.new_chat),
-                scene = Scene.Stream,
+                scene = stripScenes[0],
                 primary = true,
                 width = cardWidth,
                 onClick = onNewChat,
@@ -657,21 +684,21 @@ private fun ArtStrip(
             ArtCard(
                 icon = LumoIcons.Translate,
                 label = stringResource(R.string.nav_translate),
-                scene = Scene.WindBamboo,
+                scene = stripScenes[1],
                 width = cardWidth,
                 onClick = onTranslate,
             )
             ArtCard(
                 icon = LumoIcons.Voice,
                 label = stringResource(R.string.nav_voice),
-                scene = Scene.Falls,
+                scene = stripScenes[2],
                 width = cardWidth,
                 onClick = onVoice,
             )
             ArtCard(
                 icon = LumoIcons.Trophy,
                 label = stringResource(R.string.arena_entry),
-                scene = Scene.Peaks,
+                scene = stripScenes[3],
                 width = cardWidth,
                 onClick = onArena,
             )

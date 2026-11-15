@@ -143,8 +143,10 @@ import com.yuguang.lumo.ui.components.PoemLine
 import com.yuguang.lumo.ui.components.PressScale
 import com.yuguang.lumo.ui.components.SealBadge
 import com.yuguang.lumo.ui.components.glass
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.LumoIcons
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.LumoType
 import com.yuguang.lumo.ui.theme.SceneryCatalog
 
@@ -259,7 +261,7 @@ fun ChatScreen(
         }
     }
 
-    BackdropHost(scene = SceneryCatalog.forRoute("chat")) {
+    BackdropHost(scene = SceneryCatalog.forRoute("chat", LocalSkin.current)) {
     Scaffold(
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -673,9 +675,10 @@ private fun WelcomePane(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // 还没落笔的纸上先立一句诗：溪山配「明月松间照，清泉石上流」。
+            // 还没落笔的纸上先立一句诗：溪山配「明月松间照，清泉石上流」，弧光配星与火。
+            val arcaneSkin = LocalSkin.current == Skin.Arcane
             PoemLine(
-                textRes = R.string.onboarding_poem_2,
+                textRes = if (arcaneSkin) R.string.chat_poem_arcane_1 else R.string.onboarding_poem_2,
                 vertical = true,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.80f),
                 horizontalAlignment = Alignment.CenterHorizontally,

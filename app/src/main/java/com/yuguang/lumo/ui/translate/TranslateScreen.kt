@@ -140,6 +140,7 @@ import com.yuguang.lumo.ui.languageLabel
 import com.yuguang.lumo.ui.shell.AppSection
 import com.yuguang.lumo.ui.shell.SectionScaffold
 import com.yuguang.lumo.ui.shortLanguageLabel
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
 import com.yuguang.lumo.ui.theme.LumoIcons
@@ -1689,7 +1690,10 @@ private fun RecordSummary(record: TranslationEntity, onOpen: (TranslationEntity)
     val palette = LocalLumoPalette.current
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     // 每条记录带一幅「那天的山」缩略图：翻历史先认画，再读字。
-    val thumb = remember(record.id) { SceneryCatalog.daily(record.createdAt / 86_400_000L) }
+    val skin = LocalSkin.current
+    val thumb = remember(record.id, skin) {
+        SceneryCatalog.daily(record.createdAt / 86_400_000L, skin)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()

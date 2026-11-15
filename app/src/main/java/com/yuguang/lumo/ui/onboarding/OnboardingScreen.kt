@@ -82,6 +82,8 @@ import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
 import com.yuguang.lumo.ui.theme.LumoMotion
 import com.yuguang.lumo.ui.theme.LumoType
+import com.yuguang.lumo.ui.theme.LocalSkin
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.Scene
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -131,13 +133,31 @@ class OnboardingViewModel @Inject constructor(
 }
 
 /** 三页的景、诗、印：青绿—云山—千岩，正好是一程由近及远的路。 */
-private val PAGE_SCENES = listOf(Scene.Qinglu, Scene.Cloud, Scene.Peaks)
-private val PAGE_POEMS = intArrayOf(
+private val LUMOS_PAGE_SCENES = listOf(Scene.Qinglu, Scene.Cloud, Scene.Peaks)
+private val LUMOS_PAGE_POEMS = intArrayOf(
     R.string.onboarding_poem_1,
     R.string.onboarding_poem_2,
     R.string.onboarding_poem_3,
 )
-private val PAGE_SEALS = listOf("光", "山", "安")
+private val LUMOS_PAGE_SEALS = listOf("光", "山", "安")
+
+// 弧光院：三幅同一世界观的景，配三句自己的题词与印文。
+private val ARCANE_PAGE_SCENES = listOf(Scene.ArcaneCastle, Scene.ArcaneHall, Scene.ArcaneNebula)
+private val ARCANE_PAGE_POEMS = intArrayOf(
+    R.string.home_motto_arcane_1,
+    R.string.home_motto_arcane_3,
+    R.string.chat_poem_arcane_1,
+)
+private val ARCANE_PAGE_SEALS = listOf("星", "火", "安")
+
+private fun pageScenes(skin: Skin): List<Scene> =
+    if (skin == Skin.Arcane) ARCANE_PAGE_SCENES else LUMOS_PAGE_SCENES
+
+private fun pagePoems(skin: Skin): IntArray =
+    if (skin == Skin.Arcane) ARCANE_PAGE_POEMS else LUMOS_PAGE_POEMS
+
+private fun pageSeals(skin: Skin): List<String> =
+    if (skin == Skin.Arcane) ARCANE_PAGE_SEALS else LUMOS_PAGE_SEALS
 
 /**
  * 画心占屏高的比例。前两页只有一行标题 + 两行说明，画心抬到 0.64，
@@ -145,7 +165,7 @@ private val PAGE_SEALS = listOf("光", "山", "安")
  * 密钥页要塞三把钥匙 + 一句说明，纸片反而要让出高度（0.42），表单才不用挤着滚。
  */
 private fun bandFraction(page: Int): Float =
-    if (page == PAGE_SCENES.lastIndex) 0.42f else 0.64f
+    if (page == 2) 0.42f else 0.64f
 
 /** 纸片顶部大圆角，压住画心的下缘。 */
 private val SHEET_CORNER = 30.dp
@@ -168,8 +188,12 @@ private val ENTER_SEAL_HEIGHT = 56.dp
 fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
-    val pagerState = rememberPagerState(pageCount = { PAGE_SCENES.size })
-    val scene = PAGE_SCENES[pagerState.currentPage.coerceIn(0, PAGE_SCENES.lastIndex)]
+    val skin = LocalSkin.current
+    val scenes = remember(skin) { pageScenes(skin) }
+    val poems = remember(skin) { pagePoems(skin) }
+    val seals = remember(skin) { pageSeals(skin) }
+    val pagerState = rememberPagerState(pageCount = { scenes.size })
+    val scene = scenes[pagerState.currentPage.coerceIn(0, scenes.lastIndex)]
 
     BackdropHost(scene = scene) {
         Scaffold(
@@ -191,12 +215,12 @@ fun OnboardingScreen(
                     // 页与页之间的相对位移：0 = 居中，±1 = 邻页。视差就挂在这个值上。
                     val offset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
                     OnboardingPage(
-                        scene = PAGE_SCENES[page],
-                        poemRes = PAGE_POEMS[page],
-                        seal = PAGE_SEALS[page],
+                        scene = scenes[page],
+                        poemRes = poems[page],
+                        seal = seals[page],
                         offset = offset,
                         bandFraction = bandFraction(page),
-                        scrollable = page == PAGE_SCENES.lastIndex,
+                        scrollable = page == scenes.lastIndex,
                     ) {
                         when (page) {
                             0 -> PageInvitation()
@@ -477,7 +501,7 @@ private fun SheetFooter(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(14.dp))
-        PageDots(count = PAGE_SCENES.size, current = current)
+        PageDots(count = 3, current = current)
         Spacer(Modifier.height(16.dp))
         EnterSealButton(onEnter = onEnter)
         Spacer(Modifier.height(2.dp))

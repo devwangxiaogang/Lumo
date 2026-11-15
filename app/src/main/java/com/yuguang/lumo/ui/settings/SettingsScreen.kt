@@ -43,7 +43,9 @@ import com.yuguang.lumo.ui.components.InkDivider
 import com.yuguang.lumo.ui.components.SealedSectionTitle
 import com.yuguang.lumo.ui.components.glass
 import com.yuguang.lumo.ui.theme.LumoIcons
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.AiColors
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
 import com.yuguang.lumo.ui.theme.SceneryCatalog
 
@@ -74,7 +76,8 @@ fun SettingsHomeScreen(
     val themeMode by appearance.mode.collectAsStateWithLifecycle()
     val sceneId by appearance.scene.collectAsStateWithLifecycle()
     // 场景名空 = 随页面，跟着聊天页的画册轮换。
-    val sceneName = SceneryCatalog.byId(sceneId)?.let { stringResource(it.titleRes) }
+    val sceneName = SceneryCatalog.byId(sceneId, LocalSkin.current)
+        ?.let { stringResource(it.titleRes) }
         ?: stringResource(R.string.scene_follow_page)
     val freeCount = viewModel.catalogs.value[ProviderId.FREE]?.size ?: 0
     // 引擎 · 音色：免费链路没有音色可选，只报链路名，不露出一项不生效的设置。
@@ -322,10 +325,14 @@ fun SettingsRow(
 }
 
 @Composable
-fun statusColor(ok: Boolean): Color = if (ok) {
-    AiColors.Success
-} else {
-    LocalLumoPalette.current.cinnabar
+fun statusColor(ok: Boolean): Color {
+    // 弧光里不用山水那枚绿：石青与古金才是这套皮肤的语言。
+    val arcane = LocalSkin.current == Skin.Arcane
+    return when {
+        ok && arcane -> MaterialTheme.colorScheme.primary
+        ok -> AiColors.Success
+        else -> LocalLumoPalette.current.cinnabar
+    }
 }
 
 @Composable

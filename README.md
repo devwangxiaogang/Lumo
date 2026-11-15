@@ -165,8 +165,11 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 ### 主题与外观
 
 - 跟随系统 / 浅色 / 深色，设置内即时生效，所有页面同步。
-- 统一设计令牌（颜色、圆角、字体、间距）：浅色是宣纸与石青、深色是夜墨与月白，朱砂只留给需要一眼看见的地方。
-- 八个页面各挂一幅公版古画做底（柔焦 + 极慢推近 + 云雾漂移），可在「外观 → 山水」里指定某幅常驻或每天轮换。
+- 统一设计令牌（颜色、圆角、字体、间距、动效时长），两套皮肤共用一套组件与一套对比度守门测试。
+- **两套皮肤可切换**（外观 → 皮肤，存本地），并同步切换桌面图标：
+  - **山水（Lumos）**：宣纸与古画。8 幅公版宋元山水，朱砂方印与墨线，动效是云雾与墨滴。
+  - **弧光学院（Arcanum）**：星穹与烛火。8 幅程序化生成的魔法场景（城堡、烛火长厅、禁林、镜湖、天文塔、魔药间、浮空书阁、星云），午夜蓝与古金，动效是星尘、星火迸散与符文环。
+- 八个页面各挂一幅底图做底（柔焦 + 极慢推近 + 气氛层），可在「外观」里指定某幅常驻或每天轮换；切皮肤时有一层 600ms 的星尘扫过。
 
 ### 数据、备份与隐私
 
@@ -418,6 +421,20 @@ the Android 13+ themed monochrome layer all come from one generator,
 [tools/build_icon.py](tools/build_icon.py).
 
 ## Features
+
+### Two skins, one design system
+
+Settings → Appearance → Skin switches the whole app between two looks, and swaps the
+launcher icon with it (both are persisted locally):
+
+- **Ink & Landscape (Lumos)** — rice paper and Song/Yuan landscape paintings, vermilion seals,
+  ink-line ornaments, drifting mist and ink-drop ripples.
+- **Arcanum** — midnight blue and old gold: a procedurally generated magic campus (castle,
+  candle-lit hall, forbidden forest, mirror lake, observatory, potion room, floating library,
+  nebula), stardust, spark bursts and slowly turning rune rings.
+
+Both skins share one component set, one motion vocabulary and the same contrast guard tests, so
+switching never changes how the app behaves — only how it feels.
 
 ### Two tiers: paid (Doubao) and free
 
