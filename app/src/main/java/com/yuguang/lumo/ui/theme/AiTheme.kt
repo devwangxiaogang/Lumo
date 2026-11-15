@@ -127,6 +127,82 @@ private val DarkColors = darkColorScheme(
     onErrorContainer = Color(0xFFF6DCD4),
 )
 
+/** 弧光学院 · 浅色：月长石靛做主色，古金做次级，余烬朱做警示。 */
+private val ArcaneLightColors = lightColorScheme(
+    primary = Color(0xFF4B4E7A),
+    onPrimary = Color(0xFFFFFBF2),
+    primaryContainer = Color(0xFFDCDCF0),
+    onPrimaryContainer = Color(0xFF1B1E3A),
+    secondary = Color(0xFF8A6A1E),
+    onSecondary = Color(0xFFFFFBF0),
+    secondaryContainer = Color(0xFFF0E2BF),
+    onSecondaryContainer = Color(0xFF3A2C08),
+    tertiary = Color(0xFFA8402C),
+    onTertiary = Color(0xFFFFF6EF),
+    tertiaryContainer = Color(0xFFF3D9D0),
+    onTertiaryContainer = Color(0xFF521A10),
+    background = Color(0xFFEDE4D0),
+    onBackground = Color(0xFF1E2230),
+    surface = Color(0xFFF6EFDD),
+    onSurface = Color(0xFF1E2230),
+    surfaceVariant = Color(0xFFE4DAC3),
+    onSurfaceVariant = Color(0xFF4C5060),
+    outline = Color(0xFFD6C9AE),
+    outlineVariant = Color(0xFFE6DCC6),
+    surfaceDim = Color(0xFFE0D6BF),
+    surfaceBright = Color(0xFFFDF8EA),
+    surfaceContainerLowest = Color(0xFFFFFBEF),
+    surfaceContainerLow = Color(0xFFF4EDDC),
+    surfaceContainer = Color(0xFFEFE7D4),
+    surfaceContainerHigh = Color(0xFFE9E0CB),
+    surfaceContainerHighest = Color(0xFFE2D8C1),
+    inverseSurface = Color(0xFF1E2230),
+    inverseOnSurface = Color(0xFFEDE4D0),
+    inversePrimary = Color(0xFF9AA6DE),
+    error = Color(0xFF9E2F22),
+    onError = Color(0xFFFFF6EF),
+    errorContainer = Color(0xFFF3D9D0),
+    onErrorContainer = Color(0xFF521A10),
+)
+
+/** 弧光学院 · 深色：午夜底 + 月长石高光 + 烛火金。 */
+private val ArcaneDarkColors = darkColorScheme(
+    primary = Color(0xFF9AA6DE),
+    onPrimary = Color(0xFF141A2E),
+    primaryContainer = Color(0xFF2A3050),
+    onPrimaryContainer = Color(0xFFDCDCF0),
+    secondary = Color(0xFFD6AE5C),
+    onSecondary = Color(0xFF2A2008),
+    secondaryContainer = Color(0xFF413211),
+    onSecondaryContainer = Color(0xFFF0E2BF),
+    tertiary = Color(0xFFD2643F),
+    onTertiary = Color(0xFF2E1009),
+    tertiaryContainer = Color(0xFF4A2216),
+    onTertiaryContainer = Color(0xFFF3D9D0),
+    background = Color(0xFF0B1020),
+    onBackground = Color(0xFFEFE9D8),
+    surface = Color(0xFF141A2E),
+    onSurface = Color(0xFFEFE9D8),
+    surfaceVariant = Color(0xFF1E263C),
+    onSurfaceVariant = Color(0xFFB0B3CC),
+    outline = Color(0xFF3A4468),
+    outlineVariant = Color(0xFF232B44),
+    surfaceDim = Color(0xFF080C18),
+    surfaceBright = Color(0xFF232B44),
+    surfaceContainerLowest = Color(0xFF070B14),
+    surfaceContainerLow = Color(0xFF10152A),
+    surfaceContainer = Color(0xFF151B31),
+    surfaceContainerHigh = Color(0xFF1A2138),
+    surfaceContainerHighest = Color(0xFF202841),
+    inverseSurface = Color(0xFFEFE9D8),
+    inverseOnSurface = Color(0xFF141A2E),
+    inversePrimary = Color(0xFF4B4E7A),
+    error = Color(0xFFE58A7E),
+    onError = Color(0xFF3A0F0A),
+    errorContainer = Color(0xFF4A1C16),
+    onErrorContainer = Color(0xFFF6DCD4),
+)
+
 /**
  * 山水层专用色板：Material 色板表达不了「宣纸 / 磨砂玻璃 / 蒙版」这类材质色，单独一份。
  *
@@ -154,6 +230,10 @@ data class LumoPalette(
     val scrimBottom: Color,
     /** 印章文字色。 */
     val sealInk: Color,
+    /** 光晕：弧光皮肤用它画星辉 / 极光；山水皮肤用它画顶栏那一团暖光。 */
+    val glow: Color,
+    /** 星火 / 符文亮色：只有弧光皮肤会用，山水皮肤保留同字段以免调用点分叉。 */
+    val spark: Color,
 )
 
 private val LightLumoPalette = LumoPalette(
@@ -168,6 +248,8 @@ private val LightLumoPalette = LumoPalette(
     scrimMid = Color(0x14F2EADA),
     scrimBottom = Color(0x80F2EADA),
     sealInk = Color(0xFFFFF6E9),
+    glow = Color(0xFFFFF1C9),
+    spark = Color(0xFFE8C97A),
 )
 
 private val DarkLumoPalette = LumoPalette(
@@ -183,9 +265,46 @@ private val DarkLumoPalette = LumoPalette(
     scrimMid = Color(0x1A0F1513),
     scrimBottom = Color(0x850F1513),
     sealInk = Color(0xFFF6EEE0),
+    glow = Color(0xFFA9C4FF),
+    spark = Color(0xFFF0D793),
 )
 
 /** 当前山水色板；未包在 [AiTheme] 里时回落到浅色纸面。 */
+/**
+ * 弧光学院 · 浅色「晨雾羊皮纸」：白天在院校里，纸色偏冷、金是旧金。
+ *
+ * 与山水皮肤同一套字段语义：cinnabar 槽在这里是「余烬朱」（烛火 / 警示），
+ * gold 槽是装饰金；两者都不参与正文，正文一律走 onSurface。
+ */
+private val LightArcanePalette = LumoPalette(
+    paper = Color(0xFFEDE4D0),
+    paperGlass = Color(0xFFF8F2E3),
+    glassBorder = Color(0xFFFFF8E7),
+    cinnabar = Color(0xFFA8402C),
+    gold = Color(0xFFB8892F),
+    scrimTop = Color(0x66EDE4D0),
+    scrimMid = Color(0x14EDE4D0),
+    scrimBottom = Color(0x80EDE4D0),
+    sealInk = Color(0xFFFFF6E0),
+    glow = Color(0xFFFFE9AE),
+    spark = Color(0xFFB0801F),
+)
+
+/** 弧光学院 · 深色「午夜星穹」：夜色压得更深，靠金与月白提亮，不靠加白雾。 */
+private val DarkArcanePalette = LumoPalette(
+    paper = Color(0xFF0B1020),
+    paperGlass = Color(0xFF1A2138),
+    glassBorder = Color(0xFF3A4468),
+    cinnabar = Color(0xFFD2643F),
+    gold = Color(0xFFD6AE5C),
+    scrimTop = Color(0x660B1020),
+    scrimMid = Color(0x1A0B1020),
+    scrimBottom = Color(0x850B1020),
+    sealInk = Color(0xFFF6F0DE),
+    glow = Color(0xFFA9C4FF),
+    spark = Color(0xFFF0D793),
+)
+
 val LocalLumoPalette = staticCompositionLocalOf { LightLumoPalette }
 
 /**
@@ -248,16 +367,32 @@ val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(30.dp),
 )
 
+/**
+ * 主题入口：明暗 + 皮肤两层。
+ *
+ * 皮肤决定的是「材质与画风」——色板、背景场景集合、装饰记号、动效风格；
+ * 明暗决定同一套皮肤下的日夜两面。两者正交，所以 2×2 一共四套色板。
+ */
 @Composable
 fun AiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    skin: Skin = Skin.Default,
     content: @Composable () -> Unit,
 ) {
+    val palette = when (skin) {
+        Skin.Lumos -> if (darkTheme) DarkLumoPalette else LightLumoPalette
+        Skin.Arcane -> if (darkTheme) DarkArcanePalette else LightArcanePalette
+    }
+    val scheme = when (skin) {
+        Skin.Lumos -> if (darkTheme) DarkColors else LightColors
+        Skin.Arcane -> if (darkTheme) ArcaneDarkColors else ArcaneLightColors
+    }
     CompositionLocalProvider(
-        LocalLumoPalette provides if (darkTheme) DarkLumoPalette else LightLumoPalette,
+        LocalLumoPalette provides palette,
+        LocalSkin provides skin,
     ) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = scheme,
             typography = AppTypography,
             shapes = AppShapes,
             content = content,

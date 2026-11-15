@@ -3,6 +3,7 @@ package com.yuguang.lumo.ui.prefs
 import android.content.Context
 import androidx.annotation.StringRes
 import com.yuguang.lumo.R
+import com.yuguang.lumo.ui.theme.Skin
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,7 @@ enum class ThemeMode(@StringRes val labelRes: Int) {
 }
 
 /**
- * 界面相关的本地偏好：主题、首次引导、山水场景与动效。
+ * 界面相关的本地偏好：主题、皮肤、首次引导、背景场景与动效。
  *
  * 全部是 `StateFlow`：改一次值，所有在读它的页面同时刷新（不需要回来问 SharedPreferences）。
  */
@@ -33,6 +34,12 @@ class UiPreferences @Inject constructor(
             .getOrDefault(ThemeMode.SYSTEM),
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    /** 皮肤：山水 / 弧光学院。缺键或脏数据都回落默认皮肤。 */
+    private val _skin = MutableStateFlow(
+        Skin.byId(prefs.getString(KEY_SKIN, null)) ?: Skin.Default,
+    )
+    val skin: StateFlow<Skin> = _skin.asStateFlow()
 
     private val _onboarded = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDED, false))
     val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
@@ -52,6 +59,11 @@ class UiPreferences @Inject constructor(
     fun setThemeMode(mode: ThemeMode) {
         _themeMode.value = mode
         prefs.edit().putString(KEY_THEME, mode.name).apply()
+    }
+
+    fun setSkin(skin: Skin) {
+        _skin.value = skin
+        prefs.edit().putString(KEY_SKIN, skin.id).apply()
     }
 
     fun markOnboarded() {
@@ -79,6 +91,7 @@ class UiPreferences @Inject constructor(
 
     private companion object {
         const val KEY_THEME = "theme_mode"
+        const val KEY_SKIN = "skin"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_SCENE = "scene_id"
         const val KEY_DAILY_SCENE = "scene_daily"

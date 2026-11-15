@@ -29,10 +29,6 @@
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- 从任意 App 分享文字 / 图片进来 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -56,6 +52,39 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+        <!--
+          桌面图标由两个 activity-alias 承载：同一套代码，两个图标。
+          皮肤切换时由 IconSwitcher 启用其一、禁用另一个（DONT_KILL_APP）。
+          两个 alias 的 targetActivity 都是 MainActivity，所以「从桌面启动」与
+          「从分享进来」走的是同一个入口，只是桌面上显示的图标不同。
+        -->
+        <activity-alias
+            android:name=".LauncherLumos"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherArcane"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_arcane"
+            android:roundIcon="@mipmap/ic_launcher_arcane_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>

@@ -10,6 +10,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
@@ -29,6 +31,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
+import com.yuguang.lumo.ui.theme.Skin
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LumoMotion
 
 /**
@@ -131,7 +135,12 @@ data class LumoNavSpec(
  * ```
  */
 object LumoNavTransitions {
-    fun specs(motionEnabled: Boolean): LumoNavSpec {
+    /**
+     * [skin] 只影响「进入的手感」：山水是横向推入（像翻页），
+     * 弧光是原地放大 + 淡入（像从雾里显形）。时长与缓动两边一致 —— 换皮肤不该换节奏。
+     */
+    fun specs(motionEnabled: Boolean, skin: Skin = Skin.Default): LumoNavSpec {
+        if (skin == Skin.Arcane) return arcaneSpecs(motionEnabled)
         val inMillis = LumoMotion.duration(LumoMotion.navEnterMillis, motionEnabled)
         val outMillis = LumoMotion.duration(LumoMotion.navExitMillis, motionEnabled)
 
@@ -159,6 +168,22 @@ object LumoNavTransitions {
         )
     }
 
+    private fun arcaneSpecs(motionEnabled: Boolean): LumoNavSpec {
+        val inMillis = LumoMotion.duration(LumoMotion.navEnterMillis, motionEnabled)
+        val outMillis = LumoMotion.duration(LumoMotion.navExitMillis, motionEnabled)
+        val enter = fadeIn(tween(durationMillis = inMillis, easing = LumoMotion.ease)) +
+            scaleIn(
+                animationSpec = tween(durationMillis = inMillis, easing = LumoMotion.ease),
+                initialScale = if (motionEnabled) 1.012f else 1f,
+            )
+        val exit = fadeOut(tween(durationMillis = outMillis, easing = LumoMotion.ease)) +
+            scaleOut(
+                animationSpec = tween(durationMillis = outMillis, easing = LumoMotion.ease),
+                targetScale = if (motionEnabled) 0.994f else 1f,
+            )
+        return LumoNavSpec(enter = enter, exit = exit, popEnter = enter, popExit = exit)
+    }
+
     /** 开动效的默认规格，供非 Composable 场景直接引用。 */
     val default: LumoNavSpec = specs(true)
 
@@ -170,5 +195,6 @@ object LumoNavTransitions {
 @Composable
 fun rememberNavSpec(): LumoNavSpec {
     val motion = LocalMotionEnabled.current
-    return remember(motion) { LumoNavTransitions.specs(motion) }
+    val skin = LocalSkin.current
+    return remember(motion, skin) { LumoNavTransitions.specs(motion, skin) }
 }

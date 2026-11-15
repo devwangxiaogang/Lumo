@@ -3,7 +3,9 @@ package com.yuguang.lumo.ui
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -25,6 +27,7 @@ import com.yuguang.lumo.ui.arena.ArenaScreen
 import com.yuguang.lumo.ui.backdrop.BackdropHost
 import com.yuguang.lumo.ui.chat.ChatScreen
 import com.yuguang.lumo.ui.components.LumoNavSpec
+import com.yuguang.lumo.ui.components.SkinSwitchVeil
 import com.yuguang.lumo.ui.components.rememberNavSpec
 import com.yuguang.lumo.ui.list.ConversationListScreen
 import com.yuguang.lumo.ui.prefs.UiPreferences
@@ -38,6 +41,7 @@ import com.yuguang.lumo.ui.settings.VoicePrefsScreen
 import com.yuguang.lumo.ui.shell.AppBottomBar
 import com.yuguang.lumo.ui.shell.AppSection
 import com.yuguang.lumo.ui.stats.UsageStatsScreen
+import com.yuguang.lumo.ui.theme.LocalSkin
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
 import com.yuguang.lumo.ui.theme.LumoMotion
 import com.yuguang.lumo.ui.theme.Scene
@@ -114,14 +118,18 @@ fun AiApp(
     val pickedScene by shellViewModel.scene.collectAsStateWithLifecycle()
     val dailyScene by shellViewModel.dailyScene.collectAsStateWithLifecycle()
     val today = remember(dailyScene, route) { localEpochDay() }
-    val scene: Scene = SceneryCatalog.byId(pickedScene)
+    // 皮肤只影响「取哪一组景」：手选的一幅必须属于当前皮肤，否则当作没选。
+    val skin = LocalSkin.current
+    val scene: Scene = SceneryCatalog.byId(pickedScene, skin)
         ?: if (dailyScene && route == Routes.Conversations) {
-            SceneryCatalog.daily(today)
+            SceneryCatalog.daily(today, skin)
         } else {
-            SceneryCatalog.forRoute(route)
+            SceneryCatalog.forRoute(route, skin)
         }
 
     BackdropHost(scene = scene) {
+        // 换皮肤时盖一层星尘（600ms）：让色板与文字颜色的瞬间跳变看起来像一次施法。
+        Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             // 透明容器：整页山水由 BackdropHost 铺在下面，Scaffold 只负责排布与避让。
             containerColor = Color.Transparent,
@@ -220,6 +228,8 @@ fun AiApp(
                     AboutScreen(onBack = { nav.popBackStack() })
                 }
             }
+        }
+            SkinSwitchVeil()
         }
     }
 }

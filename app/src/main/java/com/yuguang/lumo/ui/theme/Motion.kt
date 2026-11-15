@@ -52,6 +52,24 @@ object LumoMotion {
     const val chartBarMillis = 500
     const val chartBarStagger = 60
 
+    // ---- 弧光学院皮肤专用：星火、符文、极光 ----
+
+    /** 星火迸散（替代墨点涟漪）。比墨点略长一点，让火星有飞出去的时间。 */
+    const val sparkMillis = 420
+
+    /** 符文环一整圈的旋转时长，慢到不会让人盯着看。 */
+    const val runeRotateMillis = 12000
+
+    /** 环境星点闪烁的周期区间（每颗星各取一个值，避免整屏同频闪）。 */
+    const val starTwinkleMinMillis = 1600
+    const val starTwinkleMaxMillis = 3200
+
+    /** 极光带横扫一轮。 */
+    const val auroraSweepMillis = 9000
+
+    /** 切皮肤时星尘扫过整屏的时长。 */
+    const val veilSweepMillis = 600
+
     /** 统一缓动：快出慢收，接近毛笔落纸的手感。 */
     val ease = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 

@@ -8,6 +8,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,6 +49,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yuguang.lumo.ui.theme.LocalLumoPalette
+import com.yuguang.lumo.ui.theme.LocalSkin
+import com.yuguang.lumo.ui.theme.Skin
 import com.yuguang.lumo.ui.theme.LocalMotionEnabled
 import com.yuguang.lumo.ui.theme.LumoMotion
 import com.yuguang.lumo.ui.theme.LumoType
@@ -68,6 +73,7 @@ fun InkRipple(
 ) {
     val motion = LocalMotionEnabled.current
     val palette = LocalLumoPalette.current
+    val arcane = LocalSkin.current == Skin.Arcane
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val spread = remember { Animatable(0f) }
@@ -99,7 +105,14 @@ fun InkRipple(
                 if (motion) {
                     Modifier.drawBehind {
                         val p = spread.value
-                        if (p > 0.001f && p < 0.999f) {
+                        if (arcane) {
+                            // 弧光学院：墨点换成星火，金环 + 十颗火星向外飞。
+                            drawSparkBurst(
+                                progress = p,
+                                spark = palette.spark,
+                                ring = palette.gold,
+                            )
+                        } else if (p > 0.001f && p < 0.999f) {
                             val maxRadius = hypot(size.width, size.height) * 0.5f
                             drawCircle(
                                 color = palette.cinnabar.copy(alpha = 0.24f * (1f - p)),
@@ -128,6 +141,16 @@ fun InkDots(
     gap: Dp = 6.dp,
 ) {
     val motion = LocalMotionEnabled.current
+    if (LocalSkin.current == Skin.Arcane) {
+        // 星火不位移，只呼吸亮度：夜里一团火在闪，比三滴墨上下跳更「安静」。
+        TwinkleDots(
+            modifier = modifier,
+            color = LocalLumoPalette.current.spark,
+            dotSize = dotSize,
+            gap = gap,
+        )
+        return
+    }
     val progress = rememberInkDotsProgress(motion)
     Row(
         modifier = modifier,
@@ -182,6 +205,10 @@ fun BreathingSeal(
 ) {
     val motion = LocalMotionEnabled.current
     val palette = LocalLumoPalette.current
+    if (LocalSkin.current == Skin.Arcane) {
+        ArcaneBreathingSeal(modifier = modifier, size = size, text = text, content = content)
+        return
+    }
     val breath = rememberBreath(motion)
     Box(
         modifier = modifier
@@ -243,6 +270,25 @@ fun SealBadge(
     contentColor: Color = LocalLumoPalette.current.sealInk,
     size: Dp = 18.dp,
 ) {
+    if (LocalSkin.current == Skin.Arcane) {
+        // 弧光学院不写字，用四芒星：同一位置、同一尺寸，语义仍是「这里的标记」。
+        val palette = LocalLumoPalette.current
+        DiamondBadge(
+            size = size,
+            brush = goldBrush(palette.gold, palette.cinnabar),
+            glow = glowBrush(palette.spark),
+            modifier = modifier,
+        ) {
+            Canvas(modifier = Modifier.size(size * 0.52f)) {
+                drawFourPointStar(
+                    center = Offset(this.size.width / 2f, this.size.height / 2f),
+                    outerRadius = this.size.minDimension / 2f,
+                    color = palette.sealInk,
+                )
+            }
+        }
+        return
+    }
     Box(
         modifier = modifier
             .size(size)
@@ -310,6 +356,33 @@ fun InkDivider(
     color: Color = MaterialTheme.colorScheme.outline,
     alpha: Float = 0.85f,
 ) {
+    if (LocalSkin.current == Skin.Arcane) {
+        val palette = LocalLumoPalette.current
+        Box(modifier = modifier.fillMaxWidth().height(9.dp)) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(9.dp)) {
+                val midY = size.height / 2f
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            palette.gold.copy(alpha = 0f),
+                            palette.gold.copy(alpha = alpha * 0.85f),
+                            palette.gold.copy(alpha = 0f),
+                        ),
+                    ),
+                    topLeft = Offset(0f, midY - 0.5.dp.toPx()),
+                    size = androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx()),
+                )
+                // 中心一颗小小的菱点：金线不是「切断」，是「穿过一枚铆钉」。
+                drawFourPointStar(
+                    center = Offset(size.width / 2f, midY),
+                    outerRadius = 3.4.dp.toPx(),
+                    color = palette.gold.copy(alpha = alpha),
+                    waistRatio = 0.34f,
+                )
+            }
+        }
+        return
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -324,4 +397,57 @@ fun InkDivider(
                 ),
             ),
     )
+}
+
+/**
+ * 弧光的「呼吸徽记」：外圈符文环慢转（12s 一圈），内芯是金色菱徽，
+ * 呼吸的节奏沿用 [LumoMotion.sealBreathMillis]，与山水那枚印章同频 —— 换皮肤不该换节奏。
+ */
+@Composable
+private fun ArcaneBreathingSeal(
+    modifier: Modifier = Modifier,
+    size: Dp = 64.dp,
+    text: String? = null,
+    content: @Composable BoxScope.() -> Unit = {},
+) {
+    val motion = LocalMotionEnabled.current
+    val palette = LocalLumoPalette.current
+    val breath = rememberBreath(motion)
+    val rotation = rememberRuneRotation(motion)
+    Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRuneRing(
+                rotationDeg = (rotation?.value ?: 0f) * 360f,
+                color = palette.gold,
+                radius = this.size.minDimension / 2f - 2.dp.toPx(),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(size * 0.62f)
+                .graphicsLayer {
+                    val p = breath?.value ?: 1f
+                    val s = 0.96f + 0.06f * p
+                    scaleX = s
+                    scaleY = s
+                    alpha = 0.86f + 0.14f * p
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRuneDiamond(
+                    brush = goldBrush(palette.gold, palette.cinnabar),
+                    glowBrush = glowBrush(palette.spark),
+                )
+            }
+            if (text != null) {
+                Text(
+                    text = text,
+                    style = LumoType.seal.copy(fontSize = 12.sp, letterSpacing = 1.sp),
+                    color = palette.sealInk,
+                )
+            }
+            content()
+        }
+    }
 }
