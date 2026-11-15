@@ -105,7 +105,8 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 
 ### AI 对话
 
-- 多段对话保存在本机（Room），首页支持搜索、置顶、长按重命名 / 删除、快捷入口（新对话 / 翻译 / 语音 / 备份）。
+- 多段对话保存在本机（Room），首页支持搜索、置顶、长按重命名 / 删除。
+- 首页四张艺术卡（新对话 / 翻译 / 语音 / 擂台）按屏宽等分一屏放全，不再有横滑露半个的情况；会话行用列表自带的插入动画，滚动时不会再出现「滑一下有几条空着」的逐条淡入。
 - 流式回复；助手消息可展开思考过程，支持轻量 Markdown（代码块、列表、链接），可长按复制整段消息。
 - 顶栏可编辑**助手人设**（系统提示词），内置预设或自定义，保存后从下一条消息生效。
 - 模型按服务商分组选择，可从服务商**拉取最新模型目录**（本地缓存约 24 小时）；目录外模型 ID 可手动填写。
@@ -146,11 +147,12 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 
 - 接入豆包**端到端实时语音** `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue`，豆包直接语音回答，无需先识别再合成。
 - **按住说话、松手发送**；播报中按住可直接打断当前回答。
-- 中央光球随麦克风 / 播放音量律动，状态在待机 / 连接中 / 聆听 / 思考 / 播报之间切换。
-- 实时字幕：你说 / 豆包两张卡片，最新一句高亮，长按复制。
+- 中央光球随麦克风 / 播放音量律动，光球里是这位助手的名字「语光」，不再借用服务商的名字。
+- **链路可见**：光球下方一行写清这次走的是「实时语音 · Seeduplex」「免费链路 · 逐轮对话」还是「分步对话 · 识别 → 回答 → 朗读」，点开即语音设置；连接后这行收进状态卡，随时可查。
+- 实时字幕：你说 / 语光两张卡片，最新一句高亮，长按复制。
 - 通话计时；右上角红色「结束」按钮。
 - **音色 / 语速热切换**：会话中修改通过 `session.update` 立即生效，不重连。
-- **打字输入**：打招呼文字可直接让豆包朗读；配合实时语音会话使用。
+- **打字输入**：打招呼文字可直接让语光念出来；配合实时语音会话使用。
 - **自动降级**：未开通、403、网络异常或权限缺失时，自动切换为「识别 → 对话 → 朗读」链路，并在顶部显示黄色提示条。
 - 底部导航是 Tab 语义：无返回箭头；系统返回键在通话中先挂断，未通话时离开语音 Tab。
 
@@ -163,7 +165,8 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 ### 主题与外观
 
 - 跟随系统 / 浅色 / 深色，设置内即时生效，所有页面同步。
-- 统一设计令牌（颜色、圆角、字体、间距），语音页也随主题切换（浅色暖白 + 靛紫光晕，深色深空蓝 + 靛紫光晕）。
+- 统一设计令牌（颜色、圆角、字体、间距）：浅色是宣纸与石青、深色是夜墨与月白，朱砂只留给需要一眼看见的地方。
+- 八个页面各挂一幅公版古画做底（柔焦 + 极慢推近 + 云雾漂移），可在「外观 → 山水」里指定某幅常驻或每天轮换。
 
 ### 数据、备份与隐私
 
@@ -434,7 +437,8 @@ The free tier uses public endpoints: it may be rate-limited and content may be l
 
 ### Chat
 
-- Local conversations (Room) with search, pinning, long-press rename/delete, and quick actions.
+- Local conversations (Room) with search, pinning, long-press rename/delete.
+- Four art cards (new chat / translate / voice / arena) share the screen width, so none of them is half-hidden; rows use the list's own insertion animation instead of a per-row fade, so scrolling never leaves blank rows.
 - Streaming replies, expandable reasoning, light Markdown, message copy / read-aloud / retry.
 - Editable assistant persona (system prompt), model picker grouped by provider with a refreshable model catalog.
 - Vision input (up to 4 images) and image generation via Doubao Seedream (draw mode, explicit intent, or a `generate_image` tool call).
@@ -469,7 +473,8 @@ The free tier uses public endpoints: it may be rate-limited and content may be l
 
 - End-to-end realtime voice over `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue`; Doubao answers with speech directly.
 - Hold to talk, release to send; press while it is speaking to interrupt.
-- Central orb reacts to microphone and playback levels; live captions for both sides.
+- Central orb reacts to microphone and playback levels and carries the assistant's own name; live captions for both sides.
+- **The voice stack is visible**: a line under the orb names it (realtime Seeduplex / free turn-by-turn / staged listen → answer → speak) and opens voice settings; once connected it folds into the status card.
 - Call timer, red end button, and a Tab-style back behaviour (back ends the call first).
 - Hot voice / speed switching during a call via `session.update`, no reconnect needed.
 - Text greeting input, and automatic fallback to ASR → LLM → TTS when realtime voice is unavailable.
