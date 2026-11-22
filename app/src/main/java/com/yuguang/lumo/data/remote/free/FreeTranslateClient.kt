@@ -13,6 +13,7 @@ import com.yuguang.lumo.domain.model.WireMessage
 import com.yuguang.lumo.domain.model.ChatRequest
 import com.yuguang.lumo.domain.model.freeTtsSupports
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -74,7 +75,9 @@ class FreeTranslateClient @Inject constructor(
                 maxOutputTokens = 1_024,
             )
             val buffer = StringBuilder()
-            runCatching {
+            // 必须单独把 CancellationException 放出去：用户改输入/切页后这次请求已经不要了，
+            // 若被 runCatching 吞掉，for 循环会继续打下一个模型，白烧匿名额度也拖慢新请求。
+            try {
                 client.stream(
                     url = EndpointUrls.chatCompletions(ProviderId.FREE.defaultBaseUrl, ProviderId.FREE),
                     apiKey = "",
@@ -86,6 +89,10 @@ class FreeTranslateClient @Inject constructor(
                         else -> Unit
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // 单个模型失败就换下一个，不算取消。
             }
             val out = buffer.toString().trim().trim('"', '“', '”', '\n')
             if (out.isNotBlank() && !looksLikeRefusal(out)) {

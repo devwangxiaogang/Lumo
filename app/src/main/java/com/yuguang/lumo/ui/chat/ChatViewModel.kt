@@ -16,6 +16,7 @@ import com.yuguang.lumo.domain.ChatCommand
 import com.yuguang.lumo.domain.ChatRepository
 import com.yuguang.lumo.domain.ModelCatalogRepository
 import com.yuguang.lumo.domain.SettingsRepository
+import com.yuguang.lumo.domain.model.BranchIndex
 import com.yuguang.lumo.domain.model.BranchPath
 import com.yuguang.lumo.domain.model.ChatMessage
 import com.yuguang.lumo.domain.model.Conversation
@@ -175,21 +176,16 @@ class ChatViewModel @Inject constructor(
      * - 用户消息「编辑并分支」→ 同一父节点下多条用户消息（根节点也适用）。
      *
      * 但 1.2 及更早的备份导入后整段对话 parentId 都是 0，那时它们不是「分支」而是同一条链，
-     * 因此只有当库里真的存在父子关系（[hasTree]）时才承认根节点上的兄弟是一个分支。
+     * 因此只有当库里真的存在父子关系时才承认根节点上的兄弟是一个分支。
+     *
+     * 实现在 [BranchIndex.entries]：一次分组代替「每条消息各扫一遍全量」，
+     * 结果与旧的逐条 siblings 调用逐字段一致（BranchIndexTest 用 golden 守着）。
      */
     private fun branchEntries(
         active: List<ChatMessage>,
         all: List<ChatMessage>,
-    ): Map<Long, BranchEntry> = buildMap {
-        val hasTree = all.any { it.parentId != 0L }
-        active.forEach { message ->
-            if (message.parentId == 0L && !hasTree) return@forEach
-            val group = BranchPath.siblings(all, message.id)
-            val index = group.indexOfFirst { it.id == message.id }
-            if (group.size > 1 && index >= 0) {
-                put(message.id, BranchEntry(group.map { it.id }, index))
-            }
-        }
+    ): Map<Long, BranchEntry> = BranchIndex.entries(active, all).mapValues { (_, entry) ->
+        BranchEntry(entry.ids, entry.index)
     }
 
     private data class CoreSlice(

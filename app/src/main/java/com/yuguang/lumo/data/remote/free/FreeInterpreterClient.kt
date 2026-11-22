@@ -87,9 +87,14 @@ class FreeInterpreterClient @Inject constructor(
                             continue
                         }
                         onEvent(AstEvent.SourceFinal(source))
-                        val translated = runCatching {
+                        // 取消必须穿透：同传被挂断后不该再为旧的一段话发翻译请求。
+                        val translated = try {
                             translator.translate(source, sourceLanguage, targetLanguage)
-                        }.getOrNull()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        }
                         if (translated.isNullOrBlank()) continue
                         onEvent(AstEvent.TargetFinal(translated))
                         spoken.send(translated)

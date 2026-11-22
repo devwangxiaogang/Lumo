@@ -53,8 +53,10 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.onSurface,
     style: TextStyle = MaterialTheme.typography.bodyLarge,
+    /** 流式生成中：块级结果按增量复用，避免每个 token 都重切整段。 */
+    streaming: Boolean = false,
 ) {
-    val blocks = remember(text) { splitMarkdownBlocks(text) }
+    val blocks = rememberMarkdownBlocks(text, streaming)
     if (blocks.none { it is MarkdownBlock.Code }) {
         InlineMarkdown(text = text.trim(), modifier = modifier, color = color, style = style)
         return
@@ -75,6 +77,30 @@ fun MarkdownText(
                 is MarkdownBlock.Code -> CodeBlock(block = block, color = color)
             }
         }
+    }
+}
+
+/**
+ * 流式期间走 [MarkdownCache] 的增量路径，静止后回到最朴素的 `remember(text)`。
+ *
+ * 静止文本只解析一次，没有增量收益，多留一层状态反而增加重组成本。
+ * 缓存在 composable 外部持有（[remember] 一个可变持有者），避免把
+ * `mutableStateOf` 写进组合过程导致每次重组都触发一次无意义的失效。
+ */
+@Composable
+private fun rememberMarkdownBlocks(text: String, streaming: Boolean): List<MarkdownBlock> {
+    if (!streaming) return remember(text) { splitMarkdownBlocks(text) }
+    val holder = remember { MarkdownCacheHolder() }
+    return remember(text) { holder.advance(text) }
+}
+
+private class MarkdownCacheHolder {
+    private var snapshot: MarkdownCache.Snapshot? = null
+
+    fun advance(text: String): List<MarkdownBlock> {
+        val next = MarkdownCache.advance(snapshot, text)
+        snapshot = next
+        return next.blocks()
     }
 }
 

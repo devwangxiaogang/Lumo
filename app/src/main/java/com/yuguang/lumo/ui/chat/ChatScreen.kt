@@ -164,6 +164,10 @@ fun ChatScreen(
     val snackbar = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    // 文案在组合期取一次：在权限/朗读回调里调 context.getString 会在系统语言
+    // 切换后继续用旧语言，而且这些键本来就不会在回调期间变化。
+    val micForChatText = stringResource(R.string.mic_for_chat)
+    val useLocalOnceText = stringResource(R.string.use_local_once)
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val copyLabel = stringResource(R.string.copy_message)
@@ -210,7 +214,7 @@ fun ChatScreen(
         if (granted) {
             voiceMode = true
         } else {
-            scope.launch { snackbar.showSnackbar(context.getString(R.string.mic_for_chat)) }
+            scope.launch { snackbar.showSnackbar(micForChatText) }
         }
     }
     val pickImages = rememberLauncherForActivityResult(
@@ -233,7 +237,7 @@ fun ChatScreen(
     }
     LaunchedEffect(Unit) {
         viewModel.speakPrompts.collect { prompt ->
-            val result = snackbar.showSnackbar(prompt.message, actionLabel = context.getString(R.string.use_local_once))
+            val result = snackbar.showSnackbar(prompt.message, actionLabel = useLocalOnceText)
             if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
                 viewModel.speakLocal(prompt.messageId, prompt.content)
             }
@@ -1402,7 +1406,12 @@ private fun MessageBubble(
                                     )
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                             ) {
-                                MarkdownText(text = body, color = MaterialTheme.colorScheme.onSurface)
+                                MarkdownText(
+                                    text = body,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    // 只有正在生成的这一条需要增量解析；历史消息保持一次性解析。
+                                    streaming = message.status == MessageStatus.STREAMING,
+                                )
                             }
                         }
                     }

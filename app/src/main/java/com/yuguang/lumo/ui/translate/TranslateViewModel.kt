@@ -1,5 +1,6 @@
 package com.yuguang.lumo.ui.translate
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
@@ -126,6 +127,9 @@ class TranslateViewModel @Inject constructor(
     private var liveJob: Job? = null
     private var liveAudio: Channel<ByteArray>? = null
     private var autoTranslateJob: Job? = null
+    /** 在飞的文字翻译；换输入/清空时取消，结果回写前还要比一次代次。 */
+    private var textJob: Job? = null
+    private val generation = TranslationGeneration()
     private var lastTranslatedInput: String? = null
     private var photoJob: Job? = null
     private var faceJob: Job? = null
@@ -254,6 +258,9 @@ class TranslateViewModel @Inject constructor(
 
     fun clearInput() {
         autoTranslateJob?.cancel()
+        // 作废在飞的请求：清空输入后旧译文不该再回来。
+        textJob?.cancel()
+        generation.invalidate()
         lastTranslatedInput = null
         state = state.copy(input = "", output = "", message = null, offerLocalFor = null)
     }
@@ -391,7 +398,7 @@ class TranslateViewModel @Inject constructor(
 
     fun translate(save: Boolean = true) {
         val text = state.input.trim()
-        if (text.isEmpty() || state.translating) return
+        if (text.isEmpty()) return
         matchLanguagesFromText(text)
         if (state.textTarget.isBlank() || state.textSource == state.textTarget) {
             state = state.copy(message = context.getString(R.string.choose_different_target))
@@ -401,35 +408,63 @@ class TranslateViewModel @Inject constructor(
             viewModelScope.launch { saveTextRecord(text, state.output) }
             return
         }
-        state = state.copy(translating = true, message = null, output = if (save) "" else state.output)
-        viewModelScope.launch {
+        startTranslation(
+            TranslationRequest(
+                text = text,
+                source = state.textSource,
+                target = state.textTarget,
+                model = state.model,
+                generation = generation.next(),
+                save = save,
+            ),
+        )
+    }
+
+    /**
+     * 发起一次翻译并接管「结果何时允许回写」。
+     *
+     * 关键点是先 `cancel()` 上一个请求：之前的实现用 `translating` 布尔拦住并发，
+     * 结果是在飞期间的新请求被丢掉、旧结果又照常写回。改成「新请求顶掉旧请求 +
+     * 回写前比代次」后，输入框里永远只会显示当前这段文字对应的译文。
+     */
+    private fun startTranslation(request: TranslationRequest) {
+        textJob?.cancel()
+        state = state.copy(
+            translating = true,
+            message = null,
+            output = if (request.save) "" else state.output,
+        )
+        textJob = viewModelScope.launch {
             try {
-                val preferences = settingsRepository.speech()
-                val translated = if (SpeechRouter.translate(preferences) == SpeechRouter.TranslateRoute.FREE) {
-                    freeTranslator.translate(
-                        text = text,
-                        sourceLanguage = state.textSource,
-                        targetLanguage = state.textTarget,
+                val translated = when (SpeechRouter.translate(settingsRepository.speech())) {
+                    SpeechRouter.TranslateRoute.FREE -> freeTranslator.translate(
+                        text = request.text,
+                        sourceLanguage = request.source,
+                        targetLanguage = request.target,
                     )
-                } else {
-                    val doubao = settingsRepository.get(ProviderId.DOUBAO)
-                    if (doubao.apiKey.isBlank()) error(context.getString(R.string.need_ark_key))
-                    translator.translate(
-                        apiKey = doubao.apiKey,
-                        baseUrl = doubao.baseUrl,
-                        model = state.model,
-                        text = text,
-                        sourceLanguage = state.textSource,
-                        targetLanguage = state.textTarget,
-                    )
+                    else -> {
+                        val doubao = settingsRepository.get(ProviderId.DOUBAO)
+                        if (doubao.apiKey.isBlank()) error(context.getString(R.string.need_ark_key))
+                        translator.translate(
+                            apiKey = doubao.apiKey,
+                            baseUrl = doubao.baseUrl,
+                            model = request.model,
+                            text = request.text,
+                            sourceLanguage = request.source,
+                            targetLanguage = request.target,
+                        )
+                    }
                 }
-                lastTranslatedInput = text
-                if (save) saveTextRecord(text, translated)
+                // 过期结果直接丢弃：这段时间用户可能已经改了输入或切了语种。
+                if (!generation.isCurrent(request.generation)) return@launch
+                lastTranslatedInput = request.text
+                if (request.save) saveTextRecord(request.text, translated)
                 state = state.copy(output = translated, translating = false)
             } catch (cancelled: CancellationException) {
-                state = state.copy(translating = false)
+                // 被新请求顶掉时不要动 translating：新请求已经把它置为 true。
                 throw cancelled
             } catch (error: Exception) {
+                if (!generation.isCurrent(request.generation)) return@launch
                 state = state.copy(
                     translating = false,
                     message = error.message?.takeIf { it.isNotBlank() } ?: context.getString(R.string.translate_failed),
@@ -443,14 +478,17 @@ class TranslateViewModel @Inject constructor(
         val trimmed = value.trim()
         if (trimmed.isEmpty()) {
             lastTranslatedInput = null
-            state = state.copy(output = "")
+            textJob?.cancel()
+            generation.invalidate()
+            state = state.copy(output = "", translating = false)
             return
         }
         if (trimmed == lastTranslatedInput && state.output.isNotBlank()) return
         autoTranslateJob = viewModelScope.launch {
             delay(AUTO_TRANSLATE_DELAY_MS)
-            if (state.input.trim() != trimmed || state.translating) return@launch
+            if (state.input.trim() != trimmed) return@launch
             matchLanguagesFromText(trimmed)
+            // 这里不再看 `translating`：新输入本来就该顶掉上一次还没回来的请求。
             translate(save = false)
         }
     }
@@ -816,6 +854,8 @@ class TranslateViewModel @Inject constructor(
     fun reuseTextRecord(record: TranslationEntity) {
         if (record.kind != "TEXT") return
         autoTranslateJob?.cancel()
+        textJob?.cancel()
+        generation.invalidate()
         lastTranslatedInput = record.sourceText.trim()
         state = state.copy(
             tab = TranslateTab.Text,
@@ -919,6 +959,10 @@ class TranslateViewModel @Inject constructor(
         }
     }
 
+    // 录音权限由界面层在进入同传/面对面之前用 ActivityResultContracts.RequestPermission
+    // 申请并拦截（TranslateScreen 的 permission launcher），未授权时不会走到这里；
+    // 因此这里的 AudioRecord 调用点是「已有权限」的受控路径。
+    @SuppressLint("MissingPermission")
     private suspend fun capture(audio: Channel<ByteArray>, opened: kotlinx.coroutines.CompletableDeferred<AudioRecord>) {
         val min = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,

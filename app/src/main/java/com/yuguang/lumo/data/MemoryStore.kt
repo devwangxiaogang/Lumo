@@ -110,7 +110,8 @@ class MemoryStore @Inject constructor(
         )
         val raw = StringBuilder()
         val collected = withTimeoutOrNull(EXTRACT_TIMEOUT_MS) {
-            runCatching {
+            // 取消必须穿透：用户已切走会话时不该继续往本机写记忆条目。
+            try {
                 llm.stream(apiKey = config.apiKey, baseUrl = config.baseUrl, request = request)
                     .collect { event ->
                         when (event) {
@@ -119,6 +120,10 @@ class MemoryStore @Inject constructor(
                             else -> Unit
                         }
                     }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // 提炼失败不影响对话本身，按「没提炼出东西」处理。
             }
             raw.toString()
         } ?: return 0
