@@ -16,6 +16,8 @@ import com.yuguang.lumo.data.ModelFailure
 import com.yuguang.lumo.data.MemoryStore
 import com.yuguang.lumo.data.SelfTestItem
 import com.yuguang.lumo.data.local.MemoryEntity
+import com.yuguang.lumo.data.prefs.RecoveryNotice
+import com.yuguang.lumo.data.prefs.SecretStorageState
 import com.yuguang.lumo.domain.ModelCatalogRepository
 import com.yuguang.lumo.domain.SettingsRepository
 import com.yuguang.lumo.domain.model.FreeTtsBackend
@@ -46,9 +48,17 @@ class SettingsViewModel @Inject constructor(
     private val memoryStore: MemoryStore,
     private val selfTest: FreeLaneSelfTest,
     private val freeHealth: FreeModelHealth,
+    private val secretStorage: SecretStorageState,
+    private val recoveryNotice: RecoveryNotice,
 ) : ViewModel() {
     var configs by mutableStateOf<Map<ProviderId, ProviderConfig>?>(null)
         private set
+
+    /** 本机加密存储是否可用；不可用时密钥只留在内存，页面必须说清楚。 */
+    val secretsEncrypted: Boolean get() = secretStorage.encrypted
+
+    /** 会话库迁移失败被留档重建时的旧文件路径；null 表示本次启动没出过事。 */
+    val recoveredDatabasePath: StateFlow<String?> = recoveryNotice.databaseBackupPath
 
     var speech by mutableStateOf(SpeechPreferences())
         private set

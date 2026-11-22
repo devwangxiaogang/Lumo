@@ -6,7 +6,11 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yuguang.lumo.data.local.AppDatabase
+import com.yuguang.lumo.data.local.DATABASE_VERSION
 import com.yuguang.lumo.data.local.MIGRATION_2_3
+import com.yuguang.lumo.data.local.MIGRATION_3_4
+import com.yuguang.lumo.data.local.MIGRATION_4_5
+import com.yuguang.lumo.data.local.MIGRATION_5_6
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,8 +46,9 @@ class MigrationTest {
 
     @Test
     fun migrate2To3KeepsMessagesAndAddsAttachments() {
+        // 必须登记完整迁移链：AppDatabase 已经是 v6，只给 2→3 时 Room 会要求 2→6 而失败。
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             // 第一次拿 writableDatabase 时执行迁移并校验 schema。
@@ -59,7 +64,7 @@ class MigrationTest {
             }
             db.openHelper.readableDatabase.query("PRAGMA user_version").use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(3, cursor.getInt(0))
+                assertEquals(DATABASE_VERSION, cursor.getInt(0))
             }
         } finally {
             db.close()

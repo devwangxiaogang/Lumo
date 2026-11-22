@@ -193,6 +193,14 @@ fun ProviderSettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    // 加密存储不可用时如实说明：密钥只在本次运行内有效，不会落盘。
+                    if (!viewModel.secretsEncrypted) {
+                        Text(
+                            stringResource(R.string.secrets_memory_only),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                     OutlinedTextField(
                         value = config.apiKey,
                         onValueChange = { viewModel.update(config.copy(apiKey = it)) },
@@ -690,6 +698,11 @@ fun AppearanceScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Skin.entries.forEach { item ->
+                        // 每个皮肤的标签在组合期就取好，点按回调里只做拼接。
+                        val switchedLabel = stringResource(
+                            R.string.skin_icon_switched,
+                            stringResource(item.labelRes),
+                        )
                         SkinCard(
                             skin = item,
                             selected = item == skin,
@@ -698,11 +711,7 @@ fun AppearanceScreen(
                             onClick = {
                                 viewModel.setSkin(item)
                                 // 图标在部分桌面要等下一次回到桌面才刷新，先给一句话交代。
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.skin_icon_switched, skinLabelOf(context, item)),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
+                                Toast.makeText(context, switchedLabel, Toast.LENGTH_SHORT).show()
                             },
                         )
                     }
@@ -1041,6 +1050,7 @@ fun DataSettingsScreen(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> if (uri != null) viewModel.importBackup(uri) }
     val memories = viewModel.memories
+    val recoveredPath by viewModel.recoveredDatabasePath.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
 
     SettingPageScaffold(
@@ -1062,6 +1072,14 @@ fun DataSettingsScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
+                        // 迁移失败被留档重建时，用户至少要知道旧库还在、在哪。
+                        recoveredPath?.let { path ->
+                            Text(
+                                stringResource(R.string.database_recovered, path),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                         Text(
                             stringResource(R.string.backup_note),
                             style = MaterialTheme.typography.bodySmall,

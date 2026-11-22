@@ -2,18 +2,22 @@ package com.yuguang.lumo.di
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.room.Room
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.yuguang.lumo.data.local.AppDatabase
 import com.yuguang.lumo.data.local.ArenaDao
 import com.yuguang.lumo.data.local.AttachmentDao
 import com.yuguang.lumo.data.local.ConversationDao
+import com.yuguang.lumo.data.local.DATABASE_VERSION
+import com.yuguang.lumo.data.local.DatabaseOpener
 import com.yuguang.lumo.data.local.MemoryDao
 import com.yuguang.lumo.data.local.MessageDao
 import com.yuguang.lumo.data.local.SearchDao
 import com.yuguang.lumo.data.local.StatsDao
 import com.yuguang.lumo.data.local.TranslationDao
+import com.yuguang.lumo.data.prefs.InMemorySharedPreferences
+import com.yuguang.lumo.data.prefs.RecoveryNotice
+import com.yuguang.lumo.data.prefs.SecretStorageState
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -68,17 +72,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "ai_chat.db")
-            .addMigrations(
-                com.yuguang.lumo.data.local.MIGRATION_2_3,
-                com.yuguang.lumo.data.local.MIGRATION_3_4,
-                com.yuguang.lumo.data.local.MIGRATION_4_5,
-                com.yuguang.lumo.data.local.MIGRATION_5_6,
-            )
-            // 未覆盖的跨版本变更才重建，避免丢掉已迁移的会话数据。
-            .fallbackToDestructiveMigration(true)
-            .build()
+    fun provideDatabase(
+        @ApplicationContext context: Context,
+        notice: RecoveryNotice,
+    ): AppDatabase = DatabaseOpener.build(context, DATABASE_VERSION, notice)
 
     @Provides
     fun provideConversationDao(database: AppDatabase): ConversationDao = database.conversationDao()
@@ -106,8 +103,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSecretPrefs(@ApplicationContext context: Context): SharedPreferences {
-        // 密钥用 Keystore 加密。设备不支持加密存储时退回普通偏好，避免设置页打不开。
+    fun provideSecretPrefs(
+        @ApplicationContext context: Context,
+        storage: SecretStorageState,
+    ): SharedPreferences {
+        // 密钥用 Keystore 加密后落盘。
         return try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -120,9 +120,12 @@ object AppModule {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
         } catch (error: Exception) {
-            // Keystore 不可用时退回普通偏好（仍 MODE_PRIVATE，且已从备份排除）。
-            android.util.Log.e("AiSecrets", "EncryptedSharedPreferences unavailable; using plaintext prefs", error)
-            context.getSharedPreferences("provider_secrets_plain", Context.MODE_PRIVATE)
+            // Keystore 建不起来（定制 ROM、恢复出厂后主密钥失效等）时只留在内存：
+            // 功能照旧可用，但绝不退化成明文落盘——那会让 API Key 以可读形式留在
+            // /data/data 下，被云备份、设备迁移或提权后的取证直接读走。
+            android.util.Log.e("AiSecrets", "encrypted storage unavailable; keeping secrets in memory only", error)
+            storage.markInMemoryOnly()
+            InMemorySharedPreferences()
         }
     }
 }

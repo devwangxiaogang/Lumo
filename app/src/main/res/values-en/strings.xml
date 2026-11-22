@@ -329,6 +329,8 @@
     <string name="backup_export_done">Exported %1$d conversations</string>
     <string name="backup_import_done">Imported %1$d conversations</string>
     <string name="backup_failed">Backup failed (%1$s)</string>
+    <string name="secrets_memory_only">On-device encryption is unavailable (Keystore not ready), so keys are kept for this run only and must be re-entered after the app exits.</string>
+    <string name="database_recovered">The conversation database could not be upgraded. The old file was kept at %1$s and an empty database was created; copy the file out to recover it.</string>
     <string name="voice_type_hint">You can also type a question</string>
     <string name="voice_need_start">Tap "Start talking" first</string>
     <string name="voice_forbidden_hint">No permission (403): make sure the project of this Speech API Key has Seeduplex enabled</string>

@@ -73,6 +73,25 @@ class ChatMediaStore @Inject constructor(
         file.absolutePath
     }
 
+    /**
+     * 备份导入：把已经落在临时目录里的图片移进 chat_media。
+     *
+     * 用 `renameTo` 而不是再读一遍字节，省掉一次完整拷贝；跨分区时会退化成复制。
+     */
+    suspend fun adoptStaged(staged: File, mime: String): String = withContext(Dispatchers.IO) {
+        val ext = when {
+            mime.contains("png") -> "png"
+            mime.contains("webp") -> "webp"
+            else -> "jpg"
+        }
+        val file = File(root, "b_${UUID.randomUUID()}.$ext")
+        if (!staged.renameTo(file)) {
+            staged.copyTo(file, overwrite = true)
+            staged.delete()
+        }
+        file.absolutePath
+    }
+
     fun deletePaths(paths: List<String>) {
         paths.forEach { path ->
             runCatching { File(path).takeIf { it.isFile }?.delete() }

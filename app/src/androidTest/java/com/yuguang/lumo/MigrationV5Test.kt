@@ -6,9 +6,11 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yuguang.lumo.data.local.AppDatabase
+import com.yuguang.lumo.data.local.DATABASE_VERSION
 import com.yuguang.lumo.data.local.MIGRATION_2_3
 import com.yuguang.lumo.data.local.MIGRATION_3_4
 import com.yuguang.lumo.data.local.MIGRATION_4_5
+import com.yuguang.lumo.data.local.MIGRATION_5_6
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,7 +48,7 @@ class MigrationV5Test {
     @Test
     fun migrate4To5AddsUsageColumnsAndFullTextIndex() {
         val db = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
         try {
             db.openHelper.writableDatabase
@@ -92,7 +94,7 @@ class MigrationV5Test {
 
             db.openHelper.readableDatabase.query("PRAGMA user_version").use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(5, cursor.getInt(0))
+                assertEquals(DATABASE_VERSION, cursor.getInt(0))
             }
         } finally {
             db.close()

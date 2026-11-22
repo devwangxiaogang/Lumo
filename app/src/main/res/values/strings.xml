@@ -328,6 +328,8 @@
     <string name="backup_export_done">已导出 %1$d 个会话</string>
     <string name="backup_import_done">已导入 %1$d 个会话</string>
     <string name="backup_failed">备份失败（%1$s）</string>
+    <string name="secrets_memory_only">本机加密存储不可用（Keystore 未就绪），密钥只在本次运行内有效，退出应用后需要重新填写。</string>
+    <string name="database_recovered">会话库升级失败，旧库已完整留档：%1$s。已新建空库，旧文件可随时复制出来恢复。</string>
     <string name="voice_type_hint">也可以打字提问</string>
     <string name="voice_need_start">请先点「开始对话」</string>
     <string name="voice_forbidden_hint">没有调用权限（403）：请到豆包语音控制台「API Key 管理」确认这个 Key 所属项目已开通「实时语音（Seeduplex）」服务</string>
