@@ -184,6 +184,8 @@ fun VoiceChatScreen(
     val state = viewModel.state
     val palette = rememberVoicePalette()
     val context = LocalContext.current
+    // 组合期取一次：回调里读 resources 不会随系统语言切换刷新。
+    val needMicText = stringResource(R.string.need_mic_live)
     var input by remember { mutableStateOf("") }
     var voicePhase by remember { mutableStateOf(VoicePhase.Idle) }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -193,7 +195,7 @@ fun VoiceChatScreen(
     val permission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (!granted) localError = context.getString(R.string.need_mic_live)
+        if (!granted) localError = needMicText
     }
     val speech = remember {
         SpeechInput(

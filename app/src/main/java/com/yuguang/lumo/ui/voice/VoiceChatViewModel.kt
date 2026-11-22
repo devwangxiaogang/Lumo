@@ -1,5 +1,6 @@
 package com.yuguang.lumo.ui.voice
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -469,6 +470,9 @@ class VoiceChatViewModel @Inject constructor(
         }
     }
 
+    // 录音权限由语音页在开始通话前申请（VoiceChatScreen）；未授权时进入的是
+    // 降级的「识别 → 对话 → 朗读」链路，不会到这里开麦。
+    @SuppressLint("MissingPermission")
     private fun startCapture(current: VoiceSession) {
         if (captureJob != null) return
         captureJob = viewModelScope.launch(Dispatchers.IO) {

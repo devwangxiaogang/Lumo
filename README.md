@@ -174,8 +174,10 @@ node docs/gitnexus/export-graph.mjs http://127.0.0.1:4748
 ### 数据、备份与隐私
 
 - 会话、消息、图片附件、翻译记录保存在本机 Room 数据库。
-- 会话备份：导出 ZIP（含图片）、导入恢复；数据库迁移版本 v2 → v3 → v4。
-- API Key 使用 Android Keystore 加密保存在本机，不写入源码、不上传第三方。
+- 会话备份：导出 ZIP（含图片）、导入恢复；数据库迁移版本 v2 → v3 → v4 → v5 → v6。
+- **迁移不再静默清库**：未覆盖的迁移路径或「库比代码新」（降级安装）会把旧库整组留档为 `ai_chat.db.unsupported-<时间戳>` / `ai_chat.db.failed-<时间戳>`，再建空库，并在「设置 → 数据」里给出留档路径。已移除 `fallbackToDestructiveMigration`。
+- **导入是校验 → 临时文件 → 单事务**：单 entry ≤ 8 MB、索引 ≤ 16 MB、总解压 ≤ 256 MB、条目 ≤ 5000；版本号必须不高于当前；图片先进缓存目录，校验通过才搬进 `chat_media`，写库包在一个事务里，失败整体回滚并清理本次媒体。
+- API Key 使用 Android Keystore 加密保存在本机，不写入源码、不上传第三方。**加密不可用时只保留在内存**（本次运行有效、退出即失），设置页会明确提示；不再退回明文偏好。
 - 权限：`INTERNET`、`RECORD_AUDIO`；选图使用系统照片选择器，无需存储权限。
 
 ### 首次引导
@@ -349,13 +351,21 @@ app/src/main/java/com/yuguang/lumo/
 
 ## 测试
 
-- 单元测试：13 个文件、82 个用例（SSE 解码与思考字段别名、流式渲染、协议解析、历史预算、语言规则、模型能力、档位路由、免费语种边界、朗读切句、斜杠指令、图片译文解析）。
-- 仪器测试：数据库迁移 2 → 3 与 4 → 5（含 FTS 回填与触发器，真机）。
+- 单元测试：**244 个用例、0 失败**（SSE 解码与思考字段别名、流式渲染、协议解析、历史预算、语言规则、模型能力、档位路由、免费语种边界、朗读切句、斜杠指令、图片译文解析、分支索引、Markdown 块缓存、翻译代次、备份预算、内存密钥存储）。
+- 仪器测试：**14 个用例、0 失败**
+  - 迁移链 3 → 6 / 4 → 6 / 5 → 6（`MigrationTestHelper` 按导出 schema 校验：`parentId` 回填、`leafMessageId` 游标、FTS 回填、擂台表结构），2 → 3 用手工建库覆盖（v2 未导出过 schema）。
+  - 备份导入：树与叶子 round-trip、更新版本被拒、缺索引被拒、非法 JSON 不落地、角色缺失整体回滚、失败时清理孤儿图片。
+- Lint：`lintDebug` **0 error**（原 13 个：`java.time` 在 minSdk 24 会崩、录音权限、Compose 不可观察 Locale / 回调里读资源）。
 
 ```bash
 ./gradlew :app:testDebugUnitTest
+./gradlew :app:lintDebug
 ./gradlew :app:connectedDebugAndroidTest   # 注意：会重装应用，先备份数据
 ```
+
+### 持续集成
+
+`.github/workflows/android.yml`：PR 上跑单测 + lint + 打包；迁移与备份测试单独一个模拟器 job。里程碑在 `.github/workflows/pages.yml`（只发文档）。
 
 ---
 

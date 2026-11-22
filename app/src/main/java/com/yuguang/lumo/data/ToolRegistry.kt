@@ -1,6 +1,7 @@
 package com.yuguang.lumo.data
 
 import android.content.Context
+import android.os.Build
 import com.yuguang.lumo.R
 import com.yuguang.lumo.domain.ToolSpec
 import com.yuguang.lumo.domain.emptyToolSchema
@@ -105,9 +106,19 @@ class ToolRegistry @Inject constructor(
     }
 
     private fun currentTime(): String {
-        val now = ZonedDateTime.now()
-        return now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss zzz")) +
-            " (" + now.zone.id + ")"
+        // minSdk 是 24，而 java.time 要 API 26（未开 desugaring 时直接 NoClassDefFoundError）。
+        // 这里按版本分流：26+ 用 java.time 拿到带时区缩写的完整时间，24/25 退回 Calendar。
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val now = ZonedDateTime.now()
+            now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss zzz")) +
+                " (" + now.zone.id + ")"
+        } else {
+            @Suppress("DEPRECATION")
+            val calendar = java.util.Calendar.getInstance()
+            val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss zzz", java.util.Locale.US)
+                .format(calendar.time)
+            "$stamp (${calendar.timeZone.id})"
+        }
     }
 
     /** 递归下降求值：只接受数字与 + - * / % ^ ( )，其余字符直接拒绝。 */

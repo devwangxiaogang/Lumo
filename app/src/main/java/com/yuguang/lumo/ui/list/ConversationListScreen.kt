@@ -1033,7 +1033,8 @@ private fun formatDay(epoch: Long = System.currentTimeMillis()): String =
 
 @Composable
 private fun formatTime(epoch: Long): String {
-    val locale = Locale.getDefault()
+    // 同上：从 Compose 的 Configuration 取 locale，系统语言切换后能跟着刷新。
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val pattern = if (isToday(epoch)) "HH:mm" else "MM-dd"
     return SimpleDateFormat(pattern, locale).format(Date(epoch))
 }

@@ -703,7 +703,9 @@ private fun winnerLabel(winner: String): String = when (winner) {
 
 @Composable
 private fun formatWhen(epoch: Long): String {
-    val locale = Locale.getDefault()
+    // 用 Compose 的可观察 locale：Locale.getDefault() 不会在系统语言切换时
+    // 触发重组，时间格式会停留在旧语言。
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val pattern = if (isSameDay(epoch)) "HH:mm" else "MM-dd HH:mm"
     return SimpleDateFormat(pattern, locale).format(Date(epoch))
 }
