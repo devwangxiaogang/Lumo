@@ -58,7 +58,7 @@ jobs:
 
       # 单测先行：绝大多数逻辑（分支、用量、SSE、免费链路）都在这一层。
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --console=plain
+        run: ./gradlew :app:testDebugUnitTest --console=plain --info
 
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain
@@ -124,4 +124,4 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+          script: ./gradlew :app:connectedDebugAndroidTest --console=plain --info
