@@ -30,7 +30,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-37'
+          cmdline-tools-version: '16111833'
+          packages: 'platform-tools platforms;android-37.0'
+
+      # Google publishes API 37 as android-37.0, but compileSdk release(37) asks for android-37.
+      - name: Provide legacy API 37 SDK path
+        shell: bash
+        run: |
+          platforms="${ANDROID_HOME:?Android SDK not configured}/platforms"
+          test -f "$platforms/android-37.0/android.jar"
+          if [[ ! -e "$platforms/android-37" && ! -L "$platforms/android-37" ]]; then
+            ln -s android-37.0 "$platforms/android-37"
+          fi
+          test -f "$platforms/android-37/android.jar"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -81,7 +93,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-37'
+          cmdline-tools-version: '16111833'
+          packages: 'platform-tools platforms;android-37.0'
+
+      # Google publishes API 37 as android-37.0, but compileSdk release(37) asks for android-37.
+      - name: Provide legacy API 37 SDK path
+        shell: bash
+        run: |
+          platforms="${ANDROID_HOME:?Android SDK not configured}/platforms"
+          test -f "$platforms/android-37.0/android.jar"
+          if [[ ! -e "$platforms/android-37" && ! -L "$platforms/android-37" ]]; then
+            ln -s android-37.0 "$platforms/android-37"
+          fi
+          test -f "$platforms/android-37/android.jar"
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
